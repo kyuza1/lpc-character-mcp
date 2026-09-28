@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "lpc-character-mcp",
   "display_name": "LPC Character Generator",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Generate LPC pixel-art character spritesheets and export them to Godot, Unity and the web.",
   "long_description": "Build characters from the Universal LPC Spritesheet Character Generator parts by asking in plain language. Shows an animated preview in the chat, warns about missing animations, writes art credits and exports ready-to-use files for Godot 4 (SpriteFrames), Unity (sliced sprites, clips and an AnimatorController) and the web (Phaser/PixiJS atlas). Requires uv (https://docs.astral.sh/uv/) and Git.",
   "author": {
@@ -24,7 +24,7 @@
     "entry_point": "server/main.py",
     "mcp_config": {
       "command": "uvx",
-      "args": ["lpc-character-mcp==0.4.0"],
+      "args": ["lpc-character-mcp==0.5.0"],
       "env": {
         "LPC_OUTPUT_DIR": "${user_config.output_dir}",
         "LPC_LANG": "${user_config.language}"

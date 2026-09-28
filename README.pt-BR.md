@@ -11,6 +11,17 @@ e exporta prontos para **Godot**, **Unity** e **Web** (Phaser/PixiJS).
 Peça em linguagem natural ("gera um ferreiro moreno com avental e martelo") e o
 assistente monta o personagem, mostra uma prévia animada no chat e salva os arquivos.
 
+![48 personagens gerados pelo MCP](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/showcase.png)
+
+*Todos os personagens acima foram gerados por este MCP — temáticos (cavaleiro, viking, mago,
+esqueleto, orc, legionário, pirata, rei...) e sorteados.*
+
+![Personagens andando](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/walk.gif)
+
+A prévia no chat (`preview_character`) é um GIF animado — aqui, o ferreiro martelando:
+
+![Ferreiro martelando, 4 direções](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/hammer.gif)
+
 ## Instalação
 
 Precisa de **[uv](https://docs.astral.sh/uv/getting-started/installation/)** e **Git**.
@@ -206,8 +217,22 @@ Não contam como falta: rosto, nariz, barba, óculos e colares em `climb` (o per
 fica de costas), expressões em `hurt`, e armas/ferramentas/escudos — que por natureza só
 aparecem nas animações delas (listadas em `equipment_only_in`).
 
+## Licenças (Steam, App Store)
+As artes do LPC têm várias licenças. Para lojas com DRM (Steam, App Store...) só as artes
+**CC0** e **OGA-BY** são seguras. Passe `licenses: ["CC0", "OGA-BY"]` em `search_items`,
+`random_character`, `generate_batch` ou `generate_character` para ficar só nelas — cada
+parte da arte do corpo escolhido precisa oferecer uma dessas licenças (mais rigoroso que o
+site, que aceita o item se qualquer parte oferecer). Todo resultado traz `license_check`:
+```json
+"license_check": {"drm_safe": true, "share_alike_required": false, "summary": "..."}
+```
+O `from_site_url` também aceita o JSON do botão "Export to Clipboard (JSON)" do site.
+
 ## Exportar para engines
-Passe `export` no `generate_character` (pode combinar vários):
+Passe `export` no `generate_character` (pode combinar vários). As animações tocam na mesma
+ordem de quadros do gerador oficial (o andar pula a pose parada, idle/sit/emote seguram
+quadros...), e entram as animações extras do site: `1h_slash` (golpe de uma mão) e
+`watering` (com o regador). `zip: true` junta tudo em `<nome>.zip`.
 
 | `export` | Arquivos | Como usar |
 |---|---|---|
@@ -218,7 +243,8 @@ Passe `export` no `generate_character` (pode combinar vários):
 
 ## Créditos das artes
 Cada geração salva `<nome>_credits.txt` e `<nome>_credits.csv` com autores, licenças e
-links **só das artes usadas**. As sprites são LPC (CC-BY-SA 3.0, OGA-BY 3.0, GPL 3.0 e
+links **só das artes usadas**, além de um texto pronto para a tela de créditos do jogo
+(`credits.statement`). As sprites são LPC (CC-BY-SA 3.0, OGA-BY 3.0, GPL 3.0 e
 outras) — se publicar um jogo, inclua esses créditos.
 
 ## Limitações

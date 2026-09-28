@@ -7,12 +7,12 @@
     "url": "https://github.com/kyuza1/lpc-character-mcp",
     "source": "github"
   },
-  "version": "0.4.0",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "lpc-character-mcp",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
