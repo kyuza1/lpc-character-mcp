@@ -43,7 +43,8 @@ jobs:
           echo "a versão $V não apareceu no PyPI"; exit 1
       - name: instala o mcp-publisher
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          # versão fixa: o link "latest" às vezes aponta para uma release ainda sem os binários
+          curl -fL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
       - run: ./mcp-publisher validate
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish
