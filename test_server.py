@@ -205,3 +205,28 @@ def test_link_ida_e_volta_com_variante_e_varias_cores():
 def test_link_com_parametro_desconhecido():
     r = s.from_site_url(URL + "&foo=Bar_baz")
     assert r["unresolved"] == {"foo": "Bar_baz"}
+
+
+def test_personagem_aleatorio_repetivel():
+    a = s.random_character("female", seed=42)
+    b = s.random_character("female", seed=42)
+    assert a == b
+    ids = [i["id"] for i in a["items"]]
+    assert ids[0] == "body/body" and any(i.startswith("head/heads/human/") for i in ids)
+    assert any(i.startswith("torso/") for i in ids) and any(i.startswith("legs/") for i in ids)
+    assert all(s._supports(i, "female") for i in ids[1:])
+    assert a["url"].startswith(s.SITE)
+
+
+def test_aleatorio_com_item_fixo():
+    r = s.random_character("male", seed=1, fixed_items=[{"id": "tools/tool_hammer"}])
+    assert r["items"][-1] == {"id": "tools/tool_hammer"}
+
+
+def test_gera_lote(tmp_path):
+    r = s.generate_batch(3, seed=5, prefix="vila", animations=["walk"], layout="compact")
+    assert r["count"] == 3
+    for n, c in enumerate(r["characters"], 1):
+        assert "error" not in c
+        assert (tmp_path / f"vila_{n:02d}.png").exists()
+        assert (tmp_path / f"vila_{n:02d}_credits.txt").exists()

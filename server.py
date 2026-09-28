@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import os
+import random
 import re
 import urllib.parse
 import urllib.request
@@ -597,6 +598,114 @@ def to_site_url(items: list[dict], body_type: str = "male") -> str:
         if it["id"] not in ITEMS:
             raise ValueError(f"item desconhecido: {it['id']}")
     return build_url(items, body_type)
+
+
+# ---------- personagens aleatórios ----------
+SKIN_COLORS = ["light", "amber", "olive", "taupe", "bronze", "brown", "black"]
+HAIR_COLORS = ["black", "dark_brown", "chestnut", "light_brown", "blonde", "platinum", "ginger",
+               "redhead", "gray", "white", "ash", "sandy", "raven"]
+CLOTH_COLORS = ["white", "black", "gray", "charcoal", "slate", "brown", "tan", "leather", "walnut",
+                "navy", "blue", "bluegray", "sky", "teal", "forest", "green", "maroon", "red",
+                "rose", "lavender", "purple", "orange", "yellow", "linen", "ivory", "oak"]
+# (chance, prefixos de id, só para corpo)
+RANDOM_SLOTS = [
+    (1.0, ["hair/short", "hair/long", "hair/bob", "hair/curly", "hair/spiky", "hair/braids",
+           "hair/afro", "hair/pigtails", "hair/xlong"], None),
+    (0.35, ["hair/beards", "hair/mustaches"], {"male", "muscular"}),
+    (1.0, ["torso/shirts"], None),
+    (0.25, ["torso/vest", "torso/jacket/", "torso/aprons"], None),
+    (1.0, ["legs/pants", "legs/skirts", "legs/shorts"], None),
+    (1.0, ["feet/shoes", "feet/boots"], None),
+    (0.2, ["headwear/hats/caps", "headwear/hats/formal", "headwear/coverings/bandana",
+           "headwear/coverings/headbands"], None),
+    (0.15, ["torso/cape/"], None),
+]
+
+
+def _supports(item_id, body, anim="walk"):
+    d = ITEMS[item_id]
+    layers = [v for k, v in d.items() if k.startswith("layer_") and not v.get("custom_animation")]
+    anims = d.get("animations")
+    return bool(layers) and all(body in l for l in layers) and (anims is None or anim in anims)
+
+
+def _random_color(rng, d, it, hair=False):
+    """Sorteia cor/variante preferindo tons naturais (cabelo) ou discretos (roupa)."""
+    preferred = HAIR_COLORS if hair else CLOTH_COLORS
+    if d.get("variants"):
+        options = d["variants"]
+        it["variant"] = rng.choice([v for v in options if v in preferred] or options)
+        return
+    entries = _recolor_entries(d)
+    if not entries:
+        return
+    options = sorted(_colors_for(entries[0]))
+    it["color"] = rng.choice([c for c in preferred if c in options] or options)
+
+
+def random_items(body_type="male", rng=None, fixed=None):
+    rng = rng or random.Random()
+    skin = rng.choice(SKIN_COLORS)
+    female = body_type in ("female", "pregnant")
+    heads = [i for i in ITEMS if i.startswith("head/heads/human/") and _supports(i, body_type)
+             and ("female" in i) == female and "child" not in i and "elderly" not in i]
+    if body_type == "child":
+        heads = [i for i in ITEMS if i.startswith("head/heads/human/") and "child" in i] or heads
+    items = [{"id": "body/body", "color": skin}]
+    if heads:
+        items.append({"id": rng.choice(heads)})
+    for chance, prefixes, bodies in RANDOM_SLOTS:
+        if bodies and body_type not in bodies or rng.random() > chance:
+            continue
+        pool = [i for i in ITEMS if any(i.startswith(p) for p in prefixes)
+                and _supports(i, body_type) and not ITEMS[i].get("match_body_color")]
+        if not female:
+            pool = [i for i in pool if "skirt" not in i and "blouse" not in i and "corset" not in i]
+        if not pool:
+            continue
+        item_id = rng.choice(pool)
+        it = {"id": item_id}
+        _random_color(rng, ITEMS[item_id], it, hair=item_id.startswith("hair/"))
+        items.append(it)
+    # barba/bigode com a mesma cor do cabelo
+    hair = next((it for it in items if it["id"].startswith("hair/") and "color" in it), None)
+    for it in items:
+        if hair and it is not hair and it["id"].startswith(("hair/beards", "hair/mustaches")):
+            if hair["color"] in _colors_for(_recolor_entries(ITEMS[it["id"]])[0]):
+                it["color"] = hair["color"]
+    return items + list(fixed or [])
+
+
+@mcp.tool()
+def random_character(body_type: str = "male", seed: int | None = None,
+                     fixed_items: list[dict] | None = None) -> dict:
+    """Sorteia um personagem (pele, cabeça, cabelo, roupa, calçado e às vezes barba,
+    chapéu, colete ou capa). Não gera a imagem: devolve {items, body_type, url} para
+    revisar e passar a generate_character. `fixed_items` entram em todos (ex.: uma arma).
+    Use `seed` para repetir o mesmo sorteio."""
+    items = random_items(body_type, random.Random(seed), fixed_items)
+    return {"body_type": body_type, "items": items, "url": build_url(items, body_type)}
+
+
+@mcp.tool()
+def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: int | None = None,
+                   prefix: str = "npc", fixed_items: list[dict] | None = None,
+                   animations: list[str] | None = None, layout: str = "standard",
+                   split: bool = False) -> dict:
+    """Gera vários personagens aleatórios de uma vez (ex.: aldeões para um vilarejo).
+    Salva <prefix>_01.png, <prefix>_02.png... e os créditos de cada um.
+    body_types: corpos sorteados entre esses (padrão: male e female).
+    fixed_items: itens que todos recebem (ex.: [{"id": "tools/tool_hammer"}])."""
+    rng = random.Random(seed)
+    bodies = body_types or ["male", "female"]
+    out = []
+    for n in range(1, count + 1):
+        body = rng.choice(bodies)
+        items = random_items(body, rng, fixed_items)
+        r = generate_character(items, body, animations, f"{prefix}_{n:02d}.png", layout, split)
+        out.append({"file": r.get("file"), "body_type": body, "items": items,
+                    "url": build_url(items, body), **({"error": r["error"]} if "error" in r else {})})
+    return {"count": len(out), "characters": out}
 
 
 if __name__ == "__main__":
