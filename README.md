@@ -96,9 +96,9 @@ o caminho do `server.py`.
 ## Ferramentas
 | Ferramenta | O que faz |
 |---|---|
-| `generate_character(items, body_type, animations, filename, layout, split, export)` | Gera o PNG, os créditos e (opcional) os arquivos das engines |
+| `generate_character(items, body_type, animations, filename, layout, split, export, prefer_complete)` | Gera o PNG, os créditos, o relatório de animações e (opcional) os arquivos das engines |
 | `preview_character(items, body_type, animation, animated)` | Prévia no chat: GIF animado com as 4 direções |
-| `search_items(query, category, body_type, animation, type_name)` | Busca itens com filtros |
+| `search_items(query, category, body_type, animation, type_name, complete_only)` | Busca itens com filtros; itens completos primeiro |
 | `get_item(item_id)` | Cores, variantes, partes com cor separada e animações que existem em cada corpo |
 | `list_categories` | Lista as categorias de itens |
 | `random_character(body_type, seed, fixed_items)` | Sorteia um personagem |
@@ -140,6 +140,37 @@ Armas grandes e ferramentas (espadas, lanças, martelo, machado, arco...) usam q
 128 ou 192px. Elas entram sozinhas quando a animação base é pedida (pedir `slash` com o
 martelo gera também `tool_hammer`).
 
+## Animações completas
+Nem todo item do LPC tem arte para as 15 animações (ex.: o avental não tem `idle`,
+`run`, `jump`...). Nessas animações o item simplesmente some. Para evitar surpresas:
+
+- **Todo resultado avisa.** `generate_character` sempre traz `animation_check`:
+  ```json
+  "animation_check": {
+    "complete": false,
+    "incomplete_items": {
+      "torso/aprons/torso_aprons_apron": {
+        "missing": ["climb", "idle", "jump", "sit", "emote", "run", ...],
+        "complete_alternatives": ["torso/aprons/torso_aprons_overalls", ...]
+      }
+    },
+    "summary": "ATENÇÃO: nem todas as animações ficaram completas. Apron não tem ..."
+  }
+  ```
+  A prévia, o lote e a demo web também avisam.
+- **`prefer_complete: true`** troca sozinho cada item incompleto pelo parecido mais
+  próximo que tem todas as animações, mantendo a cor (ex.: avental → macacão). As trocas
+  aparecem em `replaced`.
+- **A busca prioriza completos.** `search_items` lista os completos primeiro, mostra
+  `missing_animations` dos outros e aceita `complete_only: true`. `get_item` mostra o que
+  falta e sugere `complete_alternatives`.
+- **Aleatórios só com itens completos.** `random_character` e `generate_batch` sorteiam
+  apenas itens com todas as animações.
+
+Não contam como falta: rosto, nariz, barba, óculos e colares em `climb` (o personagem
+fica de costas), expressões em `hurt`, e armas/ferramentas/escudos — que por natureza só
+aparecem nas animações delas (listadas em `equipment_only_in`).
+
 ## Exportar para engines
 Passe `export` no `generate_character` (pode combinar vários):
 
@@ -156,9 +187,8 @@ links **só das artes usadas**. As sprites são LPC (CC-BY-SA 3.0, OGA-BY 3.0, G
 outras) — se publicar um jogo, inclua esses créditos.
 
 ## Limitações
-- Nem todo item tem arte para todas as animações/corpos (ex.: a túnica só existe no corpo
-  feminino e não tem "idle"). O resultado traz `missing` com o que ficou de fora e
-  `get_item` mostra as animações disponíveis antes de gerar.
+- Alguns tipos não têm nenhuma versão completa (capas, mochilas, vestidos, saias). Com
+  `prefer_complete` eles ficam como estão, e o `animation_check` avisa.
 
 ## Desenvolvimento
 ```

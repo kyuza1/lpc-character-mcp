@@ -4,6 +4,7 @@ Lê as definições JSON do repositório clonado em ./lpc e baixa os PNGs sob de
 do GitHub (com cache local em ./cache).
 """
 import csv
+import functools
 import io
 import json
 import os
@@ -41,7 +42,17 @@ STANDARD_ROWS = {"spellcast": 0, "thrust": 4, "walk": 8, "slash": 12, "shoot": 1
                  "combat_idle": 42, "backslash": 46, "halfslash": 50}
 SHEET_WIDTH, SHEET_HEIGHT = 832, 3456  # 13 x 54 quadros de 64px
 
-mcp = MCPServer("lpc-character-generator")
+mcp = MCPServer(
+    "lpc-character-generator",
+    instructions=(
+        "Gera personagens LPC em pixel art. Ao escolher itens, prefira os que têm todas as "
+        "animações (search_items mostra 'complete' e lista os completos primeiro). Depois de "
+        "generate_character, SEMPRE leia 'animation_check': se complete=false, avise o usuário "
+        "quais itens não têm quais animações e ofereça as alternativas completas ou gerar de "
+        "novo com prefer_complete=True. Armas e ferramentas só aparecem nas animações delas "
+        "(equipment_only_in) — isso é normal. Use preview_character para mostrar o resultado."
+    ),
+)
 
 
 # ---------- catálogo ----------
@@ -350,6 +361,39 @@ def _sprite_files():
     return _FILES or None
 
 
+def _fill_path(d, path, names):
+    """Resolve "${tipo}" no caminho (ex.: expressões usam head/faces/${head}/...) com a tabela
+    replace_in_path do item e o nome do item escolhido daquele tipo. None se não combinar."""
+    for var in re.findall(r"\$\{(\w+)\}", path or ""):
+        value = d.get("replace_in_path", {}).get(var, {}).get(names.get(var, ""))
+        if not value:
+            return None
+        path = path.replace("${" + var + "}", value)
+    return path
+
+
+def _template_options(d, path):
+    """Todos os caminhos possíveis de um caminho com "${tipo}" (para checar animações sem saber a cabeça)."""
+    if "${" not in (path or ""):
+        return [path]
+    out = []
+    for var, table in d.get("replace_in_path", {}).items():
+        for value in dict.fromkeys(table.values()):
+            out.append(path.replace("${" + var + "}", value))
+    return out
+
+
+_SPRITE_DIRS = None
+
+
+def _sprite_dirs():
+    global _SPRITE_DIRS
+    if _SPRITE_DIRS is None:
+        _SPRITE_DIRS = {f.rsplit("/", 1)[0] for f in (_sprite_files() or ())}
+    return _SPRITE_DIRS
+
+
+@functools.lru_cache(maxsize=None)
 def item_animations(item_id, body):
     """Animações normais em que o item tem arte para esse corpo (pela lista de arquivos)."""
     d, files = ITEMS[item_id], _sprite_files()
@@ -359,28 +403,137 @@ def item_animations(item_id, body):
         return []
     if files is None:
         return list(d.get("animations") or ANIMATIONS)
-    path = layers[0][body]
-    if d.get("variants"):
-        dirs = {f.rsplit("/", 1)[0] for f in files if f.startswith(path)}
-        return [a for a in ANIMATIONS if f"{path}{a}" in dirs]
-    return [a for a in ANIMATIONS if f"{path}{a}.png" in files]
+    found = set()
+    for path in _template_options(d, layers[0][body]):
+        if d.get("variants"):
+            found |= {a for a in ANIMATIONS if f"{path}{a}" in _sprite_dirs()}
+        else:
+            found |= {a for a in ANIMATIONS if f"{path}{a}.png" in files}
+    return [a for a in ANIMATIONS if a in found]
 
 
 def _item_bodies(d):
     return sorted({b for k, v in d.items() if k.startswith("layer_") for b in v if b in BODY_TYPES})
 
 
+# ---------- animações completas ----------
+# Itens que por natureza só aparecem em algumas animações (armas, ferramentas, escudos):
+# não contam como "incompletos", só informam onde aparecem.
+EQUIPMENT_PREFIXES = ("weapons/", "tools/")
+# Faltas intencionais: ao escalar (climb) o personagem fica de costas, então rosto, nariz,
+# barba, óculos, colares etc. não aparecem; expressões também não têm "hurt" (deitado).
+INTENTIONAL_GAPS = [
+    (("head/", "hair/beards", "hair/mustaches", "hair/extensions", "headwear/accessories",
+      "headwear/neck"), {"climb"}),
+    (("head/faces",), {"hurt"}),
+]
+
+
+def is_equipment(item_id):
+    return item_id.startswith(EQUIPMENT_PREFIXES)
+
+
+def animation_gaps(item_id, body):
+    """Animações padrão que faltam no item para esse corpo, sem contar faltas intencionais.
+    Equipamentos devolvem [] (use item_animations para ver onde aparecem)."""
+    if is_equipment(item_id) or body not in _item_bodies(ITEMS[item_id]):
+        return []
+    ok = set(item_animations(item_id, body))
+    for prefixes, gaps in INTENTIONAL_GAPS:
+        if item_id.startswith(prefixes):
+            ok |= gaps
+    return [a for a in ANIMATIONS if a not in ok]
+
+
+def _special_animations(item_id, body):
+    """Animações especiais (tool_hammer, slash_128...) que o item tem para esse corpo."""
+    d = ITEMS[item_id]
+    return sorted({v["custom_animation"] for k, v in d.items()
+                   if k.startswith("layer_") and v.get("custom_animation") and v.get(body)})
+
+
+def is_complete(item_id, body):
+    return body in _item_bodies(ITEMS[item_id]) and not animation_gaps(item_id, body)
+
+
+def complete_alternatives(item_id, body, limit=5):
+    """Itens completos do mesmo tipo, os mais parecidos primeiro (mesma pasta, palavras do nome)."""
+    d = ITEMS[item_id]
+    folder = item_id.rsplit("/", 1)[0]
+    words = set(re.findall(r"[a-z]+", d.get("name", "").lower() + " " + item_id.lower()))
+    # mesmo tipo ou mesma pasta (ex.: avental -> macacão, ambos em torso/aprons)
+    cands = [i for i, o in ITEMS.items() if i != item_id and is_complete(i, body)
+             and (o.get("type_name") == d.get("type_name") or i.rsplit("/", 1)[0] == folder)]
+
+    def score(i):
+        o = ITEMS[i]
+        w = set(re.findall(r"[a-z]+", o.get("name", "").lower() + " " + i.lower()))
+        return (i.startswith(folder), len(words & w), -len(i))
+    return sorted(cands, key=score, reverse=True)[:limit]
+
+
+def _swap_for_complete(it, body):
+    """Troca um item incompleto pelo parecido mais próximo que tem todas as animações,
+    mantendo a cor/variante quando ela existe no novo item."""
+    alts = complete_alternatives(it["id"], body, 1)
+    if not alts:
+        return None
+    new_id = alts[0]
+    new = {"id": new_id}
+    d = ITEMS[new_id]
+    wanted = it.get("variant") or (_color_list(it)[0] if it.get("color") else None)
+    if d.get("variants") and wanted in d["variants"]:
+        new["variant"] = wanted
+    elif _recolor_entries(d) and wanted in _colors_for(_recolor_entries(d)[0]):
+        new["color"] = it.get("color")
+    return new
+
+
+def animation_report(items, body):
+    """Relatório para o usuário: itens incompletos (com alternativas) e equipamentos."""
+    incomplete, equipment = {}, {}
+    for it in items:
+        i = it["id"]
+        if i not in ITEMS or body not in _item_bodies(ITEMS[i]):
+            continue
+        if is_equipment(i):
+            equipment[i] = item_animations(i, body) + _special_animations(i, body)
+            continue
+        gaps = animation_gaps(i, body)
+        if gaps:
+            incomplete[i] = {"missing": gaps, "complete_alternatives": complete_alternatives(i, body, 3)}
+    report = {"complete": not incomplete, "incomplete_items": incomplete}
+    if equipment:
+        report["equipment_only_in"] = equipment
+    if incomplete:
+        partes = []
+        for i, info in incomplete.items():
+            alt = f" (completos parecidos: {', '.join(info['complete_alternatives'])})" \
+                if info["complete_alternatives"] else " (não há alternativa completa do mesmo tipo)"
+            partes.append(f"{ITEMS[i]['name']} não tem {', '.join(info['missing'])}{alt}")
+        report["summary"] = ("ATENÇÃO: nem todas as animações ficaram completas. " + "; ".join(partes)
+                             + ". Use prefer_complete=True para trocar por itens completos.")
+    else:
+        report["summary"] = "Todas as animações estão completas para todos os itens."
+    return report
+
+
+
 @mcp.tool()
 def search_items(query: str = "", category: str = "", body_type: str = "",
-                 animation: str = "", type_name: str = "", limit: int = 50) -> list[dict]:
+                 animation: str = "", type_name: str = "", complete_only: bool = False,
+                 limit: int = 50) -> list[dict]:
     """Procura itens. Todos os filtros são opcionais e se combinam:
     query: palavras no nome/id (todas precisam aparecer), ex.: "leather armour".
     category: prefixo do id, ex.: 'hair', 'torso/shirts', 'weapons/sword'.
     body_type: só itens que existem para esse corpo (male, female, teen...).
     animation: só itens com arte nessa animação (idle, walk, slash...) para o body_type
                (ou para male, se body_type não for dado). Evita surpresas como a túnica sem idle.
-    type_name: tipo do item (hair, clothes, legs, shoes, weapon, hat...)."""
+    type_name: tipo do item (hair, clothes, legs, shoes, weapon, hat...).
+    complete_only: só itens com todas as animações. Sem isso, os completos vêm primeiro.
+    Cada resultado diz se é completo e quais animações faltam (para o body_type ou male)."""
     words = query.lower().split()
+    body = body_type or "male"
     res = []
     for i, d in ITEMS.items():
         text = f"{i} {d.get('name', '')}".lower().replace("_", " ")
@@ -394,10 +547,20 @@ def search_items(query: str = "", category: str = "", body_type: str = "",
             continue
         if animation and animation not in item_animations(i, body_type or "male"):
             continue
-        res.append({"id": i, "name": d.get("name"), "type": d.get("type_name")})
-        if len(res) >= limit:
-            break
-    return res
+        entry = {"id": i, "name": d.get("name"), "type": d.get("type_name")}
+        if is_equipment(i):
+            entry["equipment_only_in"] = item_animations(i, body) + _special_animations(i, body)
+        else:
+            gaps = animation_gaps(i, body)
+            entry["complete"] = not gaps
+            if gaps:
+                entry["missing_animations"] = gaps
+        if complete_only and not entry.get("complete", False):
+            continue
+        res.append(entry)
+    # completos primeiro, mantendo a ordem dentro de cada grupo
+    res.sort(key=lambda e: not e.get("complete", False))
+    return res[:limit]
 
 
 @mcp.tool()
@@ -409,6 +572,14 @@ def get_item(item_id: str) -> dict:
     info = {"id": item_id, "name": d.get("name"), "type": d.get("type_name"),
             "body_types": bodies,
             "animations": {b: item_animations(item_id, b) for b in bodies}}
+    if is_equipment(item_id):
+        info["equipment"] = True
+    else:
+        info["missing_animations"] = {b: animation_gaps(item_id, b) for b in bodies}
+        info["complete"] = {b: not info["missing_animations"][b] for b in bodies}
+        alts = {b: complete_alternatives(item_id, b, 3) for b in bodies if info["missing_animations"][b]}
+        if alts:
+            info["complete_alternatives"] = alts
     if d.get("variants"):
         info["variants"] = d["variants"]
     entries = _recolor_entries(d)
@@ -433,8 +604,13 @@ def get_item(item_id: str) -> dict:
 def generate_character(items: list[dict], body_type: str = "male",
                        animations: list[str] | None = None, filename: str = "character.png",
                        layout: str = "standard", split: bool | str | list[str] = False,
-                       export: list[str] | None = None) -> dict:
+                       export: list[str] | None = None, prefer_complete: bool = False) -> dict:
     """Gera a spritesheet do personagem e salva em PNG.
+
+    Todo resultado traz `animation_check`: se todos os itens têm todas as animações e,
+    se não, quais faltam e alternativas completas. AVISE o usuário quando complete=false.
+    prefer_complete=True troca sozinho itens incompletos pelo parecido mais próximo que
+    tem todas as animações (mantendo a cor quando dá) e lista as trocas em `replaced`.
 
     items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
            Inclua um corpo (body/body) e uma cabeça (ex.: head/heads/human/heads_human_male).
@@ -471,6 +647,18 @@ def generate_character(items: list[dict], body_type: str = "male",
     bad = set(export or []) - set(EXPORTERS)
     if bad:
         return {"error": f"export inválido: {sorted(bad)}. Use {sorted(EXPORTERS)}."}
+
+    replaced = []
+    if prefer_complete:
+        swapped = []
+        for it in items:
+            new = None
+            if it.get("id") in ITEMS and not is_equipment(it["id"]) and animation_gaps(it["id"], body_type):
+                new = _swap_for_complete(it, body_type)
+            if new:
+                replaced.append({"from": it["id"], "to": new["id"]})
+            swapped.append(new or it)
+        items = swapped
 
     comp = _compose(items, body_type, animations)
     if "error" in comp:
@@ -517,13 +705,27 @@ def generate_character(items: list[dict], body_type: str = "male",
     _used_files.update(used)
     result["credits"] = _write_credits(_credits(items), OUT / path.stem)
     if export:
-        result["exports"] = {e: EXPORTERS[e](path, final, index, items, body_type) for e in export}
+        by_anim = _missing_by_animation(comp["missing"], index)
+        result["exports"] = {e: EXPORTERS[e](path, final, index, items, body_type, by_anim) for e in export}
     if comp["missing"]:
         # item sem arte para esse corpo/animação: não aparece nessas linhas
         result["missing"] = comp["missing"]
     if comp["warnings"]:
         result["warnings"] = comp["warnings"]
+    if replaced:
+        result["replaced"] = replaced
+    result["animation_check"] = animation_report(items, body_type)
     return result
+
+
+def _missing_by_animation(missing, index):
+    """{item: [anims] | {only_in}} -> {animação: [nomes dos itens que não aparecem nela]}."""
+    out = {}
+    for item_id, info in missing.items():
+        lacking = [a for a in index if a in ANIMATIONS and a not in info["only_in"]]             if isinstance(info, dict) else info
+        for a in lacking:
+            out.setdefault(a, []).append(ITEMS[item_id]["name"])
+    return out
 
 
 DIRECTIONS = ["up", "left", "down", "right"]
@@ -555,12 +757,25 @@ def _compose(items, body_type, animations=None, inherit_from=None):
     items = [dict(it, color=skin) if skin and not it.get("color")
              and ITEMS[it["id"]].get("match_body_color") else it for it in items]
 
+    # nomes escolhidos por tipo, para resolver caminhos como head/faces/${head}/...
+    names = {ITEMS[it["id"]]["type_name"]: ITEMS[it["id"]]["name"].replace(" ", "_")
+             for it in (inherit_from or items)}
     layers = []  # (zPos, ordem, item, layer, pedido)
     for n, it in enumerate(items):
         d = ITEMS[it["id"]]
         for k, v in d.items():
-            if k.startswith("layer_"):
-                layers.append((v.get("zPos", 0), n, d, v, it))
+            if not k.startswith("layer_"):
+                continue
+            if "${" in (v.get(body_type) or ""):
+                path = _fill_path(d, v[body_type], names)
+                if path is None:
+                    need = ", ".join(sorted(d.get("replace_in_path", {})))
+                    msg = f"{it['id']} não combina com o {need} escolhido e foi ignorado"
+                    if msg not in warnings:
+                        warnings.append(msg)
+                    continue
+                v = dict(v, **{body_type: path})
+            layers.append((v.get("zPos", 0), n, d, v, it))
     layers.sort(key=lambda t: (t[0], t[1]))
 
     customs = []
@@ -922,6 +1137,13 @@ def random_items(body_type="male", rng=None, fixed=None):
             continue
         pool = [i for i in ITEMS if any(i.startswith(p) for p in prefixes)
                 and _supports(i, body_type) and not ITEMS[i].get("match_body_color")]
+        # sorteia só entre itens com todas as animações; acessório opcional sem versão
+        # completa (ex.: capas) fica de fora
+        complete = [i for i in pool if is_complete(i, body_type)]
+        if complete:
+            pool = complete
+        elif chance < 1:
+            continue
         if not female:
             pool = [i for i in pool if "skirt" not in i and "blouse" not in i and "corset" not in i]
         if not pool:
@@ -967,6 +1189,7 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
         items = random_items(body, rng, fixed_items)
         r = generate_character(items, body, animations, f"{prefix}_{n:02d}.png", layout, split)
         out.append({"file": r.get("file"), "body_type": body, "items": items,
+                    "complete": r.get("animation_check", {}).get("complete"),
                     "url": build_url(items, body), **({"error": r["error"]} if "error" in r else {})})
     return {"count": len(out), "characters": out}
 
@@ -1005,6 +1228,7 @@ def _preview_frames(items, body_type, animation):
         note["missing"] = comp["missing"]
     if comp["warnings"]:
         note["warnings"] = comp["warnings"]
+    note["animation_check"] = animation_report(comp["items"], body_type)["summary"]
     return frames, exporters._fps(animation), note
 
 
@@ -1048,7 +1272,9 @@ def update_definitions(clear_image_cache: bool = False) -> dict:
     run("git", "reset", "--hard", "FETCH_HEAD")
     after = run("git", "rev-parse", "HEAD")
     if after != before:
-        ITEMS, _FILES, _CUSTOM_ANIMS = _load_items(), None, None
+        global _SPRITE_DIRS
+        ITEMS, _FILES, _CUSTOM_ANIMS, _SPRITE_DIRS = _load_items(), None, None, None
+        item_animations.cache_clear()
         (CACHE / "_custom-animations.ts").unlink(missing_ok=True)
         if clear_image_cache:
             for p in CACHE.iterdir():
@@ -1060,7 +1286,7 @@ def update_definitions(clear_image_cache: bool = False) -> dict:
 
 
 # ---------- exportação ----------
-def _export_site(path, img, index, items, body_type):
+def _export_site(path, img, index, items, body_type, missing=None):
     """JSON aceito pelo botão "Import from Clipboard" do site do gerador."""
     out = Path(path).with_name(f"{Path(path).stem}_site.json")
     out.write_text(json.dumps({"version": 1, "url": build_url(items, body_type)}, indent=2),
@@ -1070,9 +1296,9 @@ def _export_site(path, img, index, items, body_type):
 
 
 EXPORTERS = {
-    "godot": lambda path, img, index, items, body: exporters.godot(path, img, index),
-    "unity": lambda path, img, index, items, body: exporters.unity(path, img, index),
-    "web": lambda path, img, index, items, body: exporters.web(path, img, index),
+    "godot": lambda path, img, index, items, body, missing: exporters.godot(path, img, index),
+    "unity": lambda path, img, index, items, body, missing: exporters.unity(path, img, index),
+    "web": lambda path, img, index, items, body, missing: exporters.web(path, img, index, missing),
     "site": _export_site,
 }
 

@@ -288,7 +288,7 @@ AnimationClip:
 
 
 # ---------- Web (Phaser 3 / PixiJS) ----------
-def web(path, img, index):
+def web(path, img, index, missing=None):
     """Atlas JSON (formato TexturePacker "hash", lido por Phaser e PixiJS) com as animações,
     mais uma página HTML de demonstração que toca o personagem (setas/WASD para andar)."""
     path = Path(path)
@@ -307,7 +307,9 @@ def web(path, img, index):
              "meta": {"app": "lpc-character-mcp", "version": "1.0", "image": path.name,
                       "format": "RGBA8888", "size": {"w": img.width, "h": img.height}, "scale": "1",
                       "fps": {name: _fps(anim) for name, anim, _, _ in clips},
-                      "loop": {name: anim in LOOPING for name, anim, _, _ in clips}}}
+                      "loop": {name: anim in LOOPING for name, anim, _, _ in clips},
+                      # itens sem arte em cada animação (a demo avisa)
+                      "missing": missing or {}}}
     atlas_file = path.with_suffix(".json")
     atlas_file.write_text(json.dumps(atlas, indent=1), encoding="utf8")
     html = path.parent / f"{path.stem}_demo.html"

@@ -170,7 +170,11 @@ function draw(t) {
     ctx.drawImage(img, f.x, f.y, f.w, f.h,
                   (cv.width - f.w * scale) / 2, (cv.height - f.h * scale) / 2, f.w * scale, f.h * scale);
     frameLabel.textContent = `${name} · ${frame + 1}/${frames.length}`;
-    if (!msg.classList.contains("error")) show(blank.has(frames[frame]) ? "Este item não tem arte nesta animação/direção." : "");
+    if (!msg.classList.contains("error")) {
+      const lacking = (atlas.meta.missing || {})[base];
+      show(blank.has(frames[frame]) ? "Nenhuma arte nesta animação/direção."
+           : lacking ? `Sem arte nesta animação: ${lacking.join(", ")}.` : "");
+    }
   }
   requestAnimationFrame(draw);
 }

@@ -392,3 +392,82 @@ def test_demo_web_sem_marcadores_sobrando(tmp_path):
     import re
     assert not re.findall(r"__[A-Z_]+__", html)
     assert 'img.src = "dm.png?v=' in html and "<title>dm · Personagem LPC</title>" in html
+
+
+# ---------- animações completas ----------
+def test_expressao_aparece_no_rosto():
+    sem = s.generate_character([{"id": "body/body"}, {"id": "head/heads/human/heads_human_female"}],
+                               "female", ["walk"], "e0.png", "compact")
+    com = s.generate_character([{"id": "body/body"}, {"id": "head/heads/human/heads_human_female"},
+                                {"id": "head/faces/face_angry"}], "female", ["walk"], "e1.png", "compact")
+    assert "missing" not in com or "head/faces/face_angry" not in com["missing"]
+    assert Image.open(sem["file"]).tobytes() != Image.open(com["file"]).tobytes()
+
+
+def test_expressao_com_cabeca_que_nao_combina():
+    r = s.generate_character([{"id": "body/body"}, {"id": "head/heads/beast/heads_minotaur"},
+                              {"id": "head/faces/face_angry"}], animations=["walk"], filename="e2.png")
+    assert any("face_angry" in w for w in r["warnings"])
+
+
+def test_faltas_intencionais_nao_contam():
+    assert s.animation_gaps("hair/beards/beards_trimmed", "male") == []   # só falta climb
+    assert s.animation_gaps("head/faces/face_angry", "female") == []      # climb e hurt
+    assert s.animation_gaps("tools/tool_hammer", "male") == []            # equipamento
+    assert "idle" in s.animation_gaps("torso/aprons/torso_aprons_apron", "male")
+
+
+def test_relatorio_avisa_e_sugere_alternativa():
+    r = s.generate_character(FERREIRO, filename="rel.png")
+    check = r["animation_check"]
+    assert check["complete"] is False
+    apron = check["incomplete_items"]["torso/aprons/torso_aprons_apron"]
+    assert "idle" in apron["missing"]
+    assert "torso/aprons/torso_aprons_overalls" in apron["complete_alternatives"]
+    assert check["summary"].startswith("ATENÇÃO")
+    assert "tool_hammer" in check["equipment_only_in"]["tools/tool_hammer"]
+
+
+def test_prefer_complete_troca_item_incompleto():
+    r = s.generate_character(FERREIRO, filename="pc.png", prefer_complete=True)
+    assert r["replaced"] == [{"from": "torso/aprons/torso_aprons_apron",
+                              "to": "torso/aprons/torso_aprons_overalls"}]
+    assert r["animation_check"]["complete"] is True
+    # o martelo (equipamento) não é trocado
+    assert "tools/tool_hammer" in r["animation_check"]["equipment_only_in"]
+
+
+def test_prefer_complete_mantem_a_variante():
+    novo = s._swap_for_complete({"id": "torso/aprons/torso_aprons_apron", "variant": "leather"}, "male")
+    assert novo == {"id": "torso/aprons/torso_aprons_overalls", "variant": "leather"}
+
+
+def test_busca_mostra_completos_primeiro():
+    r = s.search_items("apron", body_type="male")
+    assert r[0]["complete"] is True and r[-1]["id"] == "torso/aprons/torso_aprons_apron"
+    assert "idle" in r[-1]["missing_animations"]
+    assert all(x["complete"] for x in s.search_items(category="torso", complete_only=True, limit=30))
+    espada = s.search_items("arming", category="weapons")[0]
+    assert "slash_128" in espada["equipment_only_in"]
+
+
+def test_aleatorios_so_com_itens_completos():
+    for seed in range(60):
+        body = "female" if seed % 2 else "male"
+        r = s.random_character(body, seed=seed)
+        assert s.animation_report(r["items"], body)["complete"], r["items"]
+
+
+def test_previa_e_lote_informam_completude(tmp_path):
+    note = __import__("json").loads(s.preview_character(FERREIRO)[1])
+    assert note["animation_check"].startswith("ATENÇÃO")
+    lote = s.generate_batch(2, seed=3, animations=["walk"], layout="compact")
+    assert all(c["complete"] for c in lote["characters"])
+
+
+def test_demo_web_avisa_itens_faltando(tmp_path):
+    import json
+    s.generate_character(FERREIRO, filename="dw.png", export=["web"])
+    atlas = json.loads((tmp_path / "dw.json").read_text(encoding="utf8"))
+    assert "Apron" in atlas["meta"]["missing"]["idle"]
+    assert "Apron" not in atlas["meta"]["missing"].get("walk", [])
