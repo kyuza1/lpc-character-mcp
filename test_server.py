@@ -247,3 +247,20 @@ def test_previa_de_animacao_especial():
 
 def test_previa_animacao_invalida():
     assert "desconhecida" in s.preview_character(FERREIRO, animation="xyz")
+
+
+def test_animacoes_reais_de_cada_item():
+    tunic = s.get_item("torso/shirts/torso_clothes_tunic")["animations"]
+    assert "walk" in tunic["female"] and "idle" not in tunic["female"]
+    assert "idle" in s.get_item("body/body")["animations"]["male"]
+
+
+def test_busca_com_filtros():
+    r = s.search_items("apron", body_type="male", animation="idle")
+    ids = [x["id"] for x in r]
+    assert "torso/aprons/torso_aprons_apron" not in ids
+    assert "torso/aprons/torso_aprons_overalls" in ids
+    assert [x["id"] for x in s.search_items("leather armour")] == ["torso/armour/torso_armour_leather"]
+    assert all(x["type"] == "hair" for x in s.search_items(type_name="hair", limit=10))
+    assert all("female" in s.get_item(x["id"])["body_types"]
+               for x in s.search_items(category="torso", body_type="female", limit=10))

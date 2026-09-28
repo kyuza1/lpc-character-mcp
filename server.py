@@ -127,6 +127,9 @@ _used_files = set()  # PNGs usados na geração atual (para os créditos)
 
 
 def _fetch(rel):
+    files = _sprite_files()
+    if files is not None and rel not in files:
+        return None  # não existe no repositório: nem tenta baixar
     local = CACHE / rel
     if not local.exists():
         local.parent.mkdir(parents=True, exist_ok=True)
@@ -268,15 +271,74 @@ def list_categories() -> dict:
     return dict(sorted(cats.items()))
 
 
+_FILES = None
+
+
+def _sprite_files():
+    """Lista de PNGs que existem no repositório (lida da árvore do git, sem baixar imagens).
+    Fica em cache por commit; devolve None se o git não estiver disponível."""
+    global _FILES
+    if _FILES is None:
+        try:
+            import subprocess
+            run = lambda *a: subprocess.run(a, cwd=REPO, check=True, capture_output=True,
+                                            text=True, encoding="utf8").stdout
+            head = run("git", "rev-parse", "HEAD").strip()
+            cache = CACHE / f"_files_{head}.txt"
+            if not cache.exists():
+                CACHE.mkdir(exist_ok=True)
+                cache.write_text(run("git", "ls-tree", "-r", "--name-only", "HEAD", "spritesheets"),
+                                 encoding="utf8")
+            n = len("spritesheets/")
+            _FILES = {line[n:] for line in cache.read_text(encoding="utf8").splitlines()}
+        except Exception:
+            _FILES = set()
+    return _FILES or None
+
+
+def item_animations(item_id, body):
+    """Animações normais em que o item tem arte para esse corpo (pela lista de arquivos)."""
+    d, files = ITEMS[item_id], _sprite_files()
+    layers = [v for k, v in d.items() if k.startswith("layer_")
+              and not v.get("custom_animation") and v.get(body)]
+    if not layers:
+        return []
+    if files is None:
+        return list(d.get("animations") or ANIMATIONS)
+    path = layers[0][body]
+    if d.get("variants"):
+        dirs = {f.rsplit("/", 1)[0] for f in files if f.startswith(path)}
+        return [a for a in ANIMATIONS if f"{path}{a}" in dirs]
+    return [a for a in ANIMATIONS if f"{path}{a}.png" in files]
+
+
+def _item_bodies(d):
+    return sorted({b for k, v in d.items() if k.startswith("layer_") for b in v if b in BODY_TYPES})
+
+
 @mcp.tool()
-def search_items(query: str = "", category: str = "", limit: int = 50) -> list[dict]:
-    """Procura itens pelo nome/id. `category` filtra por prefixo (ex.: 'hair', 'torso', 'legs')."""
-    q = query.lower()
+def search_items(query: str = "", category: str = "", body_type: str = "",
+                 animation: str = "", type_name: str = "", limit: int = 50) -> list[dict]:
+    """Procura itens. Todos os filtros são opcionais e se combinam:
+    query: palavras no nome/id (todas precisam aparecer), ex.: "leather armour".
+    category: prefixo do id, ex.: 'hair', 'torso/shirts', 'weapons/sword'.
+    body_type: só itens que existem para esse corpo (male, female, teen...).
+    animation: só itens com arte nessa animação (idle, walk, slash...) para o body_type
+               (ou para male, se body_type não for dado). Evita surpresas como a túnica sem idle.
+    type_name: tipo do item (hair, clothes, legs, shoes, weapon, hat...)."""
+    words = query.lower().split()
     res = []
     for i, d in ITEMS.items():
+        text = f"{i} {d.get('name', '')}".lower().replace("_", " ")
         if category and not i.startswith(category):
             continue
-        if q and q not in i.lower() and q not in d.get("name", "").lower():
+        if not all(w in text or w in i.lower() for w in words):
+            continue
+        if type_name and d.get("type_name") != type_name:
+            continue
+        if body_type and body_type not in _item_bodies(d):
+            continue
+        if animation and animation not in item_animations(i, body_type or "male"):
             continue
         res.append({"id": i, "name": d.get("name"), "type": d.get("type_name")})
         if len(res) >= limit:
@@ -286,11 +348,13 @@ def search_items(query: str = "", category: str = "", limit: int = 50) -> list[d
 
 @mcp.tool()
 def get_item(item_id: str) -> dict:
-    """Detalhes de um item: tipos de corpo suportados, cores (recolor) ou variantes disponíveis."""
+    """Detalhes de um item: corpos suportados, animações com arte em cada corpo,
+    cores (recolor) ou variantes, partes com cores separadas e animações especiais."""
     d = ITEMS[item_id]
-    bodies = sorted({b for k, v in d.items() if k.startswith("layer_") for b in v if b in BODY_TYPES})
+    bodies = _item_bodies(d)
     info = {"id": item_id, "name": d.get("name"), "type": d.get("type_name"),
-            "body_types": bodies, "animations": d.get("animations")}
+            "body_types": bodies,
+            "animations": {b: item_animations(item_id, b) for b in bodies}}
     if d.get("variants"):
         info["variants"] = d["variants"]
     entries = _recolor_entries(d)
