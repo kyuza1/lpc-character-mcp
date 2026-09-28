@@ -483,3 +483,31 @@ def test_demo_web_avisa_itens_faltando(tmp_path):
     atlas = json.loads((tmp_path / "dw.json").read_text(encoding="utf8"))
     assert atlas["meta"]["missing"]["idle"] == ["Apron"]  # martelo (equipamento) não entra
     assert "Apron" not in atlas["meta"]["missing"].get("walk", [])
+
+
+# ---------- outros corpos ----------
+@pytest.mark.parametrize("body", ["teen", "child", "muscular", "pregnant"])
+def test_outros_corpos_geram_com_tronco(body):
+    for seed in range(5):
+        r = s.random_character(body, seed=seed)
+        assert any(i["id"].startswith("head/heads/") for i in r["items"])
+        assert any(i["id"].startswith("torso/") for i in r["items"]), r["items"]
+        g = s.generate_character(r["items"], body, ["walk"], f"{body}{seed}.png", "compact")
+        assert "error" not in g
+
+
+def test_limitacao_do_corpo_separada_das_pecas():
+    rep = s.animation_report([{"id": "body/body"}, {"id": "head/heads/human/heads_human_male"},
+                              {"id": "hair/short/hair_plain"}], "muscular")
+    assert rep["body_missing"] == ["shoot", "climb", "emote", "combat_idle", "backslash", "halfslash"]
+    assert rep["incomplete_items"] == {}  # o cabelo não é culpado pelo que o corpo não tem
+    assert "o corpo muscular do LPC não tem" in rep["summary"]
+    assert "prefer_complete" not in rep["summary"]  # nada a trocar
+
+
+def test_corpo_e_cabeca_nunca_sao_trocados():
+    assert s.complete_alternatives("body/body", "muscular") == []
+    assert s.complete_alternatives("head/heads/human/heads_human_male", "male") == []
+    r = s.generate_character([{"id": "body/body"}, {"id": "head/heads/human/heads_human_male"}],
+                             "muscular", ["walk"], "nt.png", prefer_complete=True)
+    assert "replaced" not in r

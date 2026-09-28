@@ -440,6 +440,9 @@ def animation_gaps(item_id, body):
     if is_equipment(item_id) or body not in _item_bodies(ITEMS[item_id]):
         return []
     ok = set(item_animations(item_id, body))
+    # só conta o que o próprio corpo tem (o musculoso, por ex., não tem shoot nem climb)
+    if item_id != "body/body":
+        ok |= set(ANIMATIONS) - set(item_animations("body/body", body))
     for prefixes, gaps in INTENTIONAL_GAPS:
         if item_id.startswith(prefixes):
             ok |= gaps
@@ -457,8 +460,14 @@ def is_complete(item_id, body):
     return body in _item_bodies(ITEMS[item_id]) and not animation_gaps(item_id, body)
 
 
+# corpo e cabeça definem o personagem: nunca são sugeridos para troca
+BASE_PREFIXES = ("body/body", "head/heads/")
+
+
 def complete_alternatives(item_id, body, limit=5):
     """Itens completos do mesmo tipo, os mais parecidos primeiro (mesma pasta, palavras do nome)."""
+    if item_id.startswith(BASE_PREFIXES):
+        return []
     d = ITEMS[item_id]
     folder = item_id.rsplit("/", 1)[0]
     words = set(re.findall(r"[a-z]+", d.get("name", "").lower() + " " + item_id.lower()))
@@ -491,11 +500,13 @@ def _swap_for_complete(it, body):
 
 
 def animation_report(items, body):
-    """Relatório para o usuário: itens incompletos (com alternativas) e equipamentos."""
+    """Relatório para o usuário: limitações do próprio corpo, itens incompletos (com
+    alternativas) e equipamentos."""
     incomplete, equipment = {}, {}
+    body_missing = [a for a in ANIMATIONS if a not in item_animations("body/body", body)]         if body in _item_bodies(ITEMS["body/body"]) else []
     for it in items:
         i = it["id"]
-        if i not in ITEMS or body not in _item_bodies(ITEMS[i]):
+        if i == "body/body" or i not in ITEMS or body not in _item_bodies(ITEMS[i]):
             continue
         if is_equipment(i):
             equipment[i] = item_animations(i, body) + _special_animations(i, body)
@@ -503,21 +514,26 @@ def animation_report(items, body):
         gaps = animation_gaps(i, body)
         if gaps:
             incomplete[i] = {"missing": gaps, "complete_alternatives": complete_alternatives(i, body, 3)}
-    report = {"complete": not incomplete, "incomplete_items": incomplete}
+    report = {"complete": not incomplete and not body_missing, "incomplete_items": incomplete}
+    if body_missing:
+        # o corpo base não tem essas animações no LPC: nenhuma peça aparece nelas
+        report["body_missing"] = body_missing
     if equipment:
         report["equipment_only_in"] = equipment
-    if incomplete:
-        partes = []
-        for i, info in incomplete.items():
-            alt = f" (completos parecidos: {', '.join(info['complete_alternatives'])})" \
-                if info["complete_alternatives"] else " (não há alternativa completa do mesmo tipo)"
-            partes.append(f"{ITEMS[i]['name']} não tem {', '.join(info['missing'])}{alt}")
-        report["summary"] = ("ATENÇÃO: nem todas as animações ficaram completas. " + "; ".join(partes)
-                             + ". Use prefer_complete=True para trocar por itens completos.")
+    partes = []
+    if body_missing:
+        partes.append(f"o corpo {body} do LPC não tem {', '.join(body_missing)} "
+                      f"(nenhuma peça resolve; use outro tipo de corpo se precisar delas)")
+    for i, info in incomplete.items():
+        alt = f" (completos parecidos: {', '.join(info['complete_alternatives'])})"             if info["complete_alternatives"] else " (não há alternativa completa do mesmo tipo)"
+        partes.append(f"{ITEMS[i]['name']} não tem {', '.join(info['missing'])}{alt}")
+    if partes:
+        dica = (" Use prefer_complete=True para trocar por itens completos."
+                if any(v["complete_alternatives"] for v in incomplete.values()) else "")
+        report["summary"] = "ATENÇÃO: nem todas as animações ficaram completas: " + "; ".join(partes) + "." + dica
     else:
         report["summary"] = "Todas as animações estão completas para todos os itens."
     return report
-
 
 
 @mcp.tool()
@@ -1105,7 +1121,8 @@ RANDOM_SLOTS = [
     (1.0, ["hair/short", "hair/long", "hair/bob", "hair/curly", "hair/spiky", "hair/braids",
            "hair/afro", "hair/pigtails", "hair/xlong"], None),
     (0.35, ["hair/beards", "hair/mustaches"], {"male", "muscular"}),
-    (1.0, ["torso/shirts"], None),
+    # corpos sem camisas no LPC (ex.: musculoso) caem nas peças de reserva
+    (1.0, ["torso/shirts"], None, ["torso/vest", "torso/jacket/", "torso/armour", "torso/aprons"]),
     (0.25, ["torso/vest", "torso/jacket/", "torso/aprons"], None),
     (1.0, ["legs/pants", "legs/skirts", "legs/shorts"], None),
     (1.0, ["feet/shoes", "feet/boots"], None),
@@ -1147,11 +1164,14 @@ def random_items(body_type="male", rng=None, fixed=None):
     items = [{"id": "body/body", "color": skin}]
     if heads:
         items.append({"id": rng.choice(heads)})
-    for chance, prefixes, bodies in RANDOM_SLOTS:
+    for chance, prefixes, bodies, *fallback in RANDOM_SLOTS:
         if bodies and body_type not in bodies or rng.random() > chance:
             continue
-        pool = [i for i in ITEMS if any(i.startswith(p) for p in prefixes)
-                and _supports(i, body_type) and not ITEMS[i].get("match_body_color")]
+
+        def slot_pool(prefs):
+            return [i for i in ITEMS if any(i.startswith(p) for p in prefs)
+                    and _supports(i, body_type) and not ITEMS[i].get("match_body_color")]
+        pool = slot_pool(prefixes) or (slot_pool(fallback[0]) if fallback else [])
         # sorteia só entre itens com todas as animações; acessório opcional sem versão
         # completa (ex.: capas) fica de fora
         complete = [i for i in pool if is_complete(i, body_type)]
