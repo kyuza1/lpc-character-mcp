@@ -1,2 +1,2 @@
 """Servidor MCP que gera personagens LPC em pixel art e exporta para Godot, Unity e Web."""
-__version__ = "0.2.0"
+__version__ = "0.3.0"
