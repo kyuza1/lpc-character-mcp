@@ -34,7 +34,7 @@ Issues = "https://github.com/kyuza1/lpc-character-mcp/issues"
 path = "lpc_character_mcp/__init__.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["lpc_character_mcp", "tests", "server.py", "README.md", "LICENSE"]
+include = ["lpc_character_mcp", "tests", "server.py", "README.md", "README.pt-BR.md", "CHANGELOG.md", "LICENSE"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["lpc_character_mcp"]

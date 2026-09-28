@@ -1,168 +1,163 @@
 # LPC Character Generator — MCP
 
+*English · [Português](https://github.com/kyuza1/lpc-character-mcp/blob/main/README.pt-BR.md)*
+
 [![tests](https://github.com/kyuza1/lpc-character-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/kyuza1/lpc-character-mcp/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/lpc-character-mcp)](https://pypi.org/project/lpc-character-mcp/)
 
-Servidor MCP que gera spritesheets de personagens no estilo LPC — as mesmas peças do
+An MCP server that builds LPC pixel-art character spritesheets — the same parts as the
 [Universal LPC Spritesheet Character Generator](https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/) —
-e exporta prontos para **Godot**, **Unity** e **Web** (Phaser/PixiJS).
+and exports them ready for **Godot**, **Unity** and the **web** (Phaser/PixiJS).
 
-Peça em linguagem natural ("gera um ferreiro moreno com avental e martelo") e o
-assistente monta o personagem, mostra uma prévia animada no chat e salva os arquivos.
+Ask in plain language ("make a tanned blacksmith with a leather apron and a hammer") and
+your assistant assembles the character, shows an animated preview in the chat and saves
+the files.
 
-## Instalação
+## Installation
 
-Precisa de **[uv](https://docs.astral.sh/uv/getting-started/installation/)** e **Git**.
-O uv baixa o Python certo e o pacote sozinho — não precisa clonar nada nem instalar
-dependências.
+You need **[uv](https://docs.astral.sh/uv/getting-started/installation/)** and **Git**.
+uv fetches the right Python and the package by itself — nothing to clone, no
+dependencies to install.
 
-1. Instale o uv (uma vez):
+1. Install uv (once):
    - Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
    - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. Prepare o servidor (baixa as definições dos itens, ~10 s, uma vez só):
+2. Prepare the server (downloads the item definitions, ~10 s, only once):
    ```
-   uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp --setup
+   uvx lpc-character-mcp --setup
    ```
-3. Registre no seu assistente (abaixo). Em todos, o comando é o mesmo:
-   `uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp`
+3. Register it in your assistant (below). The command is always `uvx lpc-character-mcp`.
 
-Os personagens são salvos em `~/lpc-characters` (no Windows,
-`C:\Users\<você>\lpc-characters`). Para mudar, defina `LPC_OUTPUT_DIR` — por exemplo,
-apontando para a pasta de sprites do seu projeto Godot/Unity. `lpc-character-mcp --where`
-mostra todas as pastas usadas.
+To run the latest code straight from GitHub, replace `uvx lpc-character-mcp` with
+`uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp` in any example.
+
+Characters are saved to `~/lpc-characters` (on Windows, `C:\Users\<you>\lpc-characters`).
+Set `LPC_OUTPUT_DIR` to change it — for example, to your Godot/Unity sprites folder.
+`lpc-character-mcp --where` prints every folder in use.
 
 ### Claude Code
 ```
-claude mcp add lpc --scope user -- uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp
+claude mcp add lpc --scope user -- uvx lpc-character-mcp
 ```
 
 ### Claude Desktop
-Em **Configurações → Desenvolvedor → Editar configuração** (`claude_desktop_config.json`):
+**Settings → Developer → Edit config** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "lpc": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/kyuza1/lpc-character-mcp", "lpc-character-mcp"]
-    }
+    "lpc": { "command": "uvx", "args": ["lpc-character-mcp"] }
   }
 }
 ```
 
 ### Codex (OpenAI)
-Pelo terminal:
 ```
-codex mcp add lpc -- uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp
+codex mcp add lpc -- uvx lpc-character-mcp
 ```
-Ou edite `~/.codex/config.toml` (no Windows, `%USERPROFILE%\.codex\config.toml`):
+Or edit `~/.codex/config.toml` (on Windows, `%USERPROFILE%\.codex\config.toml`):
 ```toml
 [mcp_servers.lpc]
 command = "uvx"
-args = ["--from", "git+https://github.com/kyuza1/lpc-character-mcp", "lpc-character-mcp"]
+args = ["lpc-character-mcp"]
 startup_timeout_sec = 60
 ```
-Confira com `codex mcp list`. O mesmo arquivo vale para a extensão do Codex no VS Code.
+Check with `codex mcp list`. The same file is used by the Codex VS Code extension.
 
 ### Antigravity (Google)
-No painel do agente clique em **…** → **MCP Servers** → **Manage MCP Servers** →
-**View raw config** e adicione ao `mcp_config.json`
-(fica em `~/.gemini/config/mcp_config.json`; no Windows,
-`%USERPROFILE%\.gemini\config\mcp_config.json`):
+In the agent panel click **…** → **MCP Servers** → **Manage MCP Servers** →
+**View raw config** and add to `mcp_config.json` (`~/.gemini/config/mcp_config.json`;
+on Windows, `%USERPROFILE%\.gemini\config\mcp_config.json`):
 ```json
 {
   "mcpServers": {
-    "lpc": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/kyuza1/lpc-character-mcp", "lpc-character-mcp"]
-    }
+    "lpc": { "command": "uvx", "args": ["lpc-character-mcp"] }
   }
 }
 ```
-Salve e clique em **Refresh** na tela de MCP Servers. Na CLI do Antigravity, use `/mcp`
-para ver e recarregar os servidores.
+Save and click **Refresh** on the MCP Servers page. In the Antigravity CLI, use `/mcp`.
 
-### Outros clientes MCP
-Qualquer cliente que rode servidores **stdio** funciona com o mesmo comando `uvx` acima.
+### Other MCP clients
+Any client that runs **stdio** servers works with the same `uvx lpc-character-mcp` command.
 
-### Sem uv (pip)
+### Without uv (pip)
 ```
-pip install git+https://github.com/kyuza1/lpc-character-mcp
+pip install lpc-character-mcp
 lpc-character-mcp --setup
 ```
-E registre o comando `lpc-character-mcp` (sem argumentos) no seu assistente.
+Then register the `lpc-character-mcp` command (no arguments) in your assistant.
 
-### Dicas
-- **Liberar espaço:** `lpc-character-mcp --clear-cache` apaga as imagens em cache
-  (`--clear-cache 30` só as sem uso há 30 dias).
-- **Atualizar para a versão mais nova:** `uvx --refresh --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp --version`
-- **`uvx` não encontrado pelo app:** use o caminho completo (`where uvx` no Windows,
-  `which uvx` no macOS/Linux).
-- **Instalação antiga** (`python C:\lpc-mcp\server.py`): continua funcionando.
+### Tips
+- **Free disk space:** `lpc-character-mcp --clear-cache` deletes cached images
+  (`--clear-cache 30` only those unused for 30 days).
+- **Update:** `uvx lpc-character-mcp@latest --version`
+- **App can't find `uvx`:** use the full path (`where uvx` on Windows, `which uvx` elsewhere).
 
-## Exemplos de pedidos
-- "Gera um ferreiro moreno com avental de couro e martelo e exporta para Godot"
-- "Me mostra uma prévia animada dele martelando"
-- "Gera 10 aldeões aleatórios com seed 1, com os arquivos da Unity"
-- "Abre este link e gera o personagem: https://liberatedpixelcup.github.io/...#sex=male&body=..."
-- "Quais aventais têm animação idle no corpo masculino?"
+## Example requests
+- "Make a tanned blacksmith with a leather apron and a hammer, export for Godot"
+- "Show me an animated preview of him hammering"
+- "Generate 10 random villagers with seed 1, with Unity files"
+- "Open this link and generate the character: https://liberatedpixelcup.github.io/...#sex=male&body=..."
+- "Which aprons have an idle animation for the male body?"
 
-## Ferramentas
-| Ferramenta | O que faz |
+## Tools
+| Tool | What it does |
 |---|---|
-| `generate_character(items, body_type, animations, filename, layout, split, export, prefer_complete)` | Gera o PNG, os créditos, o relatório de animações e (opcional) os arquivos das engines |
-| `preview_character(items, body_type, animation, animated)` | Prévia no chat: GIF animado com as 4 direções |
-| `search_items(query, category, body_type, animation, type_name, complete_only)` | Busca itens com filtros; itens completos primeiro |
-| `get_item(item_id)` | Cores, variantes, partes com cor separada e animações que existem em cada corpo |
-| `list_categories` | Lista as categorias de itens |
-| `random_character(body_type, seed, fixed_items)` | Sorteia um personagem |
-| `generate_batch(count, body_types, seed, prefix, fixed_items, ...)` | Gera vários NPCs aleatórios |
-| `from_site_url(url)` / `to_site_url(items, body_type)` | Lê / monta links do site do gerador (inclusive links antigos) |
-| `update_definitions(clear_image_cache)` | Atualiza itens e paletas do repositório oficial |
-| `clear_cache(older_than_days, dry_run)` | Apaga as imagens baixadas em cache (ou só as sem uso há N dias) |
+| `generate_character(items, body_type, animations, filename, layout, split, export, prefer_complete, output_dir)` | Builds the PNG, the credits, the animation report and (optionally) engine files |
+| `preview_character(items, body_type, animation, animated)` | In-chat preview: animated GIF with the 4 directions |
+| `search_items(query, category, body_type, animation, type_name, complete_only)` | Searches items with filters; complete items first |
+| `get_item(item_id)` | Colors, variants, multi-color parts and the animations available per body |
+| `list_categories` | Lists item categories |
+| `random_character(body_type, seed, fixed_items)` | Rolls a random character |
+| `generate_batch(count, body_types, seed, prefix, fixed_items, ..., output_dir)` | Generates many random NPCs at once |
+| `from_site_url(url)` / `to_site_url(items, body_type)` | Reads / builds generator site links (including old links) |
+| `update_definitions(clear_image_cache)` | Pulls new items and palettes from the official repository |
+| `clear_cache(older_than_days, dry_run)` | Deletes cached images (or only those unused for N days) |
 
-Exemplo de `items`:
+Example `items`:
 ```json
 [
   {"id": "body/body", "color": "bronze"},
   {"id": "head/heads/human/heads_human_male"},
   {"id": "hair/short/hair_plain", "color": "dark_brown"},
   {"id": "torso/shirts/longsleeve/torso_clothes_longsleeve", "color": "white"},
-  {"id": "torso/aprons/torso_aprons_apron", "variant": "leather"},
+  {"id": "torso/aprons/torso_aprons_overalls", "variant": "leather"},
   {"id": "legs/pants/legs_cuffed", "color": "white"},
   {"id": "feet/boots/feet_boots_basic", "color": "brown"},
   {"id": "tools/tool_hammer", "color": ["steel", "walnut"]}
 ]
 ```
 
-### Cores
-- `"color": "blonde"` — uma cor (veja `colors` em `get_item`).
-- `"color": ["steel", "walnut"]` — itens com várias partes (cabeça e cabo, armadura e
-  cinto...). As partes aparecem em `color_parts` no `get_item`; `null` mantém a cor padrão.
-- Cabeça, orelhas, nariz e outros itens de pele sem cor herdam a cor do corpo.
-- Um item por tipo, como no site: pedir dois cabelos mantém o último (e avisa em `warnings`).
+### Colors
+- `"color": "blonde"` — one color (see `colors` in `get_item`).
+- `"color": ["steel", "walnut"]` — multi-part items (head and handle, armor and belt...).
+  Parts are listed in `color_parts` from `get_item`; `null` keeps a part's default.
+- Head, ears, nose and other skin items without a color inherit the body color.
+- One item per type, like the site: asking for two hairstyles keeps the last one (and
+  says so in `warnings`).
 
-### Onde salvar
-`output_dir` salva direto numa pasta — por exemplo a de sprites do seu jogo:
-"gera o ferreiro em C:/meu-jogo/art/npcs com export godot". Sem ele, vai para
-`LPC_OUTPUT_DIR` ou `~/lpc-characters`.
+### Where to save
+`output_dir` saves straight into a folder — e.g. your game's sprites folder:
+"generate the blacksmith in C:/my-game/art/npcs and export for Godot". Otherwise files go
+to `LPC_OUTPUT_DIR` or `~/lpc-characters`.
 
-### Layout e partes
-- `layout: "standard"` (padrão) — igual ao site: 832px de largura, cada animação sempre na
-  mesma linha (walk em y=512, slash em y=768...). Animações especiais vêm abaixo de y=3456.
-- `layout: "compact"` — só as animações pedidas, empilhadas.
-- `split` — salva também em partes: `"animation"` (um PNG por animação), `"frame"` (um PNG
-  por quadro, em `<nome>_frames/<animação>/<direção>_NN.png`) e/ou `"item"` (uma folha por
-  item, para trocar roupas no jogo). Aceita lista: `["animation", "frame"]`.
+### Layout and parts
+- `layout: "standard"` (default) — same as the site: 832px wide, every animation always on
+  the same row (walk at y=512, slash at y=768...). Oversized animations go below y=3456.
+- `layout: "compact"` — only the requested animations, stacked.
+- `split` — also saves pieces: `"animation"` (one PNG per animation), `"frame"` (one PNG
+  per frame in `<name>_frames/<animation>/<direction>_NN.png`) and/or `"item"` (one sheet
+  per item, for swapping outfits in-game). Accepts a list: `["animation", "frame"]`.
 
-### Animações especiais
-Armas grandes e ferramentas (espadas, lanças, martelo, machado, arco...) usam quadros de
-128 ou 192px. Elas entram sozinhas quando a animação base é pedida (pedir `slash` com o
-martelo gera também `tool_hammer`).
+### Oversized animations
+Big weapons and tools (swords, spears, hammer, axe, bow...) use 128 or 192px frames. They
+are added automatically when their base animation is requested (asking for `slash` with
+the hammer also produces `tool_hammer`).
 
-## Animações completas
-Nem todo item do LPC tem arte para as 15 animações (ex.: o avental não tem `idle`,
-`run`, `jump`...). Nessas animações o item simplesmente some. Para evitar surpresas:
+## Complete animations
+Not every LPC item has art for all 15 animations (e.g. the apron has no `idle`, `run`,
+`jump`...). In those animations the item simply disappears. To avoid surprises:
 
-- **Todo resultado avisa.** `generate_character` sempre traz `animation_check`:
+- **Every result warns you.** `generate_character` always returns `animation_check`:
   ```json
   "animation_check": {
     "complete": false,
@@ -172,54 +167,59 @@ Nem todo item do LPC tem arte para as 15 animações (ex.: o avental não tem `i
         "complete_alternatives": ["torso/aprons/torso_aprons_overalls", ...]
       }
     },
-    "summary": "ATENÇÃO: nem todas as animações ficaram completas. Apron não tem ..."
+    "summary": "ATENÇÃO: nem todas as animações ficaram completas: Apron não tem ..."
   }
   ```
-  A prévia, o lote e a demo web também avisam.
-- **`prefer_complete: true`** troca sozinho cada item incompleto pelo parecido mais
-  próximo que tem todas as animações, mantendo a cor (ex.: avental → macacão). As trocas
-  aparecem em `replaced`.
-- **A busca prioriza completos.** `search_items` lista os completos primeiro, mostra
-  `missing_animations` dos outros e aceita `complete_only: true`. `get_item` mostra o que
-  falta e sugere `complete_alternatives`.
-- **Aleatórios só com itens completos.** `random_character` e `generate_batch` sorteiam
-  apenas itens com todas as animações.
+  The preview, batches and the web demo warn too.
+- **`prefer_complete: true`** replaces each incomplete item with the closest item that has
+  every animation, keeping the color (e.g. apron → overalls). Replacements are listed in
+  `replaced`. The assistant is told to ask you first.
+- **Search puts complete items first.** `search_items` lists them first, shows
+  `missing_animations` for the others and accepts `complete_only: true`. `get_item` shows
+  what is missing and suggests `complete_alternatives`.
+- **Random characters only use complete items.**
 
-Não contam como falta: rosto, nariz, barba, óculos e colares em `climb` (o personagem
-fica de costas), expressões em `hurt`, e armas/ferramentas/escudos — que por natureza só
-aparecem nas animações delas (listadas em `equipment_only_in`).
+Not counted as missing: face, nose, beard, glasses and necklaces in `climb` (the character
+faces away), expressions in `hurt`, weapons/tools/shields — which by nature only appear in
+their own animations (listed in `equipment_only_in`) — and animations the body itself
+lacks (listed in `body_missing`).
 
-## Exportar para engines
-Passe `export` no `generate_character` (pode combinar vários):
+## Exporting to engines
+Pass `export` to `generate_character` (you can combine them):
 
-| `export` | Arquivos | Como usar |
+| `export` | Files | How to use |
 |---|---|---|
-| `"godot"` | `<nome>.tres` (SpriteFrames) | Gere com `output_dir` dentro do projeto (o caminho `res://` sai certo sozinho) ou copie `<nome>.png` e `<nome>.tres` para `res://characters/`. Use o `.tres` em **Sprite Frames** de um `AnimatedSprite2D`. Animações: `walk_down`, `idle_left`, `tool_hammer_right`... Testado no Godot 4.6. |
-| `"unity"` | `<nome>.png.meta`, `<nome>.controller` + `<nome>_unity_anims/*.anim` | Gere com `output_dir` dentro de `Assets/` (ou copie tudo para lá). Os sprites já vêm fatiados (Sprite Mode Multiple, filtro Point, sem compressão) e o `.controller` tem um estado por animação (começa em `idle_down`): ponha no Animator de um objeto com SpriteRenderer e use `animator.Play("walk_left")`. Testado no Unity 6. |
-| `"web"` | `<nome>.json` (atlas) + `<nome>_demo.html` | Atlas no formato TexturePacker (hash) com `animations`: Phaser 3 `this.load.atlas(...)`, PixiJS `Assets.load(...)`. Testado no Phaser 3.80 e PixiJS 8.5. A demo toca o personagem com setas/WASD, Shift e Espaço — abra por um servidor local (`python -m http.server`). |
-| `"site"` | `<nome>_site.json` | Cole no botão **Import from Clipboard (JSON)** do site do gerador para continuar editando lá. |
+| `"godot"` | `<name>.tres` (SpriteFrames) | Generate with `output_dir` inside your project (the `res://` path is filled in automatically) or copy `<name>.png` and `<name>.tres` to `res://characters/`. Use the `.tres` as **Sprite Frames** of an `AnimatedSprite2D`. Animations: `walk_down`, `idle_left`, `tool_hammer_right`... Tested on Godot 4.6. |
+| `"unity"` | `<name>.png.meta`, `<name>.controller` + `<name>_unity_anims/*.anim` | Generate with `output_dir` inside `Assets/` (or copy everything there). Sprites come pre-sliced (Multiple, Point filter, no compression) and the `.controller` has one state per animation (starts at `idle_down`): put it in the Animator of a SpriteRenderer object and call `animator.Play("walk_left")`. Tested on Unity 6. |
+| `"web"` | `<name>.json` (atlas) + `<name>_demo.html` | TexturePacker-style (hash) atlas with `animations`: Phaser 3 `this.load.atlas(...)`, PixiJS `Assets.load(...)`. Tested on Phaser 3.80 and PixiJS 8.5. The demo plays the character with arrows/WASD, Shift and Space — open it from a local server (`python -m http.server`). |
+| `"site"` | `<name>_site.json` | Paste it into the generator site's **Import from Clipboard (JSON)** button to keep editing there. |
 
-## Créditos das artes
-Cada geração salva `<nome>_credits.txt` e `<nome>_credits.csv` com autores, licenças e
-links **só das artes usadas**. As sprites são LPC (CC-BY-SA 3.0, OGA-BY 3.0, GPL 3.0 e
-outras) — se publicar um jogo, inclua esses créditos.
+## Art credits
+Every generation writes `<name>_credits.txt` and `<name>_credits.csv` with authors,
+licenses and links for **only the art that was used**. The sprites are LPC art
+(CC-BY-SA 3.0, OGA-BY 3.0, GPL 3.0 and others) — if you ship a game, include these credits.
 
-## Limitações
-- Alguns tipos não têm nenhuma versão completa (capas, mochilas, vestidos, saias). Com
-  `prefer_complete` eles ficam como estão, e o `animation_check` avisa.
+## Limitations
+- Some types have no complete version at all (capes, backpacks, dresses, skirts). With
+  `prefer_complete` they stay as they are and `animation_check` says so.
+- The LPC muscular, child and pregnant bodies lack some animations (e.g. muscular has no
+  `shoot` or `climb`); `animation_check` reports them in `body_missing`.
+- Godot 3 is not supported (Godot 4 only). Unity was tested on Unity 6.
+- Runs locally (stdio); it does not work with clients that only accept remote servers.
+- Tool messages and warnings are in Portuguese.
 
-## Desenvolvimento
+## Development
 ```
 git clone https://github.com/kyuza1/lpc-character-mcp.git
 cd lpc-character-mcp
 pip install -e ".[dev]"
 python -m pytest -q
 ```
-Rodando de um clone, as definições, o cache e os personagens ficam dentro da pasta do
-clone (`lpc/`, `cache/`, `output/`).
-Os testes rodam no GitHub Actions em Linux, Windows e macOS a cada push e toda segunda
-(para pegar mudanças no repositório oficial do LPC).
+From a clone, definitions, cache and output live inside the clone (`lpc/`, `cache/`,
+`output/`). Tests run on GitHub Actions on Linux, Windows and macOS on every push and
+every Monday (to catch changes in the official LPC repository). Releases are published to
+PyPI automatically when a GitHub release is created. See [CHANGELOG.md](https://github.com/kyuza1/lpc-character-mcp/blob/main/CHANGELOG.md).
 
-## Licença
-Código sob [MIT](LICENSE). As artes baixadas pertencem aos artistas do LPC e seguem as
-licenças deles (veja os arquivos de créditos gerados).
+## License
+Code under [MIT](https://github.com/kyuza1/lpc-character-mcp/blob/main/LICENSE). The downloaded art belongs to the LPC artists and follows their
+licenses (see the generated credits files).
