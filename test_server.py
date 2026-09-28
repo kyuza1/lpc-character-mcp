@@ -271,3 +271,116 @@ def test_todas_as_ferramentas_registradas():
     assert nomes == {"list_categories", "search_items", "get_item", "generate_character",
                      "preview_character", "random_character", "generate_batch",
                      "from_site_url", "to_site_url", "update_definitions"}
+
+
+# ---------- ajustes de uso ----------
+def test_mascara_rosa_e_apagada():
+    r = s.generate_character([{"id": "body/body"}, {"id": "body/prostheses/prosthesis_peg_leg"}],
+                             animations=["walk"], layout="compact", filename="peg.png")
+    arr = __import__("numpy").array(Image.open(r["file"]))
+    pink = (arr[..., 0] == 255) & (arr[..., 1] == 44) & (arr[..., 2] == 230) & (arr[..., 3] > 0)
+    assert not pink.any()
+    sem = Image.open(s.generate_character([{"id": "body/body"}], animations=["walk"],
+                                          layout="compact", filename="nopeg.png")["file"])
+    assert Image.open(r["file"]).tobytes() != sem.tobytes()
+
+
+def test_item_repetido_do_mesmo_tipo_substitui():
+    r = s.generate_character([{"id": "body/body"}, {"id": "hair/short/hair_plain"},
+                              {"id": "hair/long/hair_long"}], animations=["walk"], filename="dup.png")
+    assert r["warnings"] == ["hair/long/hair_long substituiu hair/short/hair_plain (mesmo tipo: hair)"]
+
+
+def test_aviso_curto_de_item_faltando():
+    r = s.generate_character(FERREIRO, filename="curto.png")
+    assert r["missing"]["tools/tool_hammer"] == {"only_in": ["walk", "slash"]}
+
+
+def test_downloads_em_paralelo(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(s, "_prefetch", lambda rels: chamadas.append(len(rels)))
+    s.generate_character(FERREIRO, animations=["walk", "slash"], filename="par.png")
+    assert chamadas and chamadas[0] > 4
+
+
+def test_body_type_invalido():
+    assert "error" in s.generate_character(FERREIRO, body_type="robot")
+
+
+# ---------- divisão em partes ----------
+def test_split_por_quadro_e_por_item(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="sp2.png", split=["frame", "item"])
+    walk = sorted(p.name for p in (tmp_path / "sp2_frames" / "walk").iterdir())
+    assert walk[0] == "down_00.png" and len(walk) == 36
+    itens = {p.name for p in (tmp_path / "sp2_items").iterdir()}
+    assert "tools__tool_hammer.png" in itens and len(itens) == 4
+    # a folha de cada item tem o mesmo tamanho da folha completa
+    assert Image.open(tmp_path / "sp2_items" / "body__body.png").size == tuple(r["size"])
+
+
+def test_split_invalido():
+    assert "error" in s.generate_character(FERREIRO, split="xyz")
+
+
+# ---------- exportação ----------
+def test_exporta_godot(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk", "slash"], filename="g.png", export=["godot"])
+    txt = (tmp_path / "g.tres").read_text(encoding="utf8")
+    assert txt.startswith('[gd_resource type="SpriteFrames"')
+    assert 'path="res://characters/g.png"' in txt
+    assert '&"walk_down"' in txt and '&"tool_hammer_left"' in txt
+    assert "region = Rect2(0, 512, 64, 64)" in txt  # 1º quadro do walk_up
+    assert r["exports"]["godot"]["animations"] == 12
+
+
+def test_exporta_unity(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="u.png", export=["unity"])
+    meta = (tmp_path / "u.png.meta").read_text(encoding="utf8")
+    assert "spriteMode: 2" in meta and "filterMode: 0" in meta and "walk_down_0:" in meta
+    anim = (tmp_path / "u_unity_anims" / "walk_down.anim").read_text(encoding="utf8")
+    assert "m_Sprite" in anim and "m_LoopTime: 1" in anim
+    assert anim.count("time: ") == 9
+    # os ids do clipe apontam para sprites do .meta
+    import re
+    ids = set(re.findall(r"fileID: (\d{6,})", anim))
+    assert ids and all(f": {i}\n" in meta for i in ids)
+
+
+def test_exporta_web(tmp_path):
+    import json
+    s.generate_character(FERREIRO, animations=["walk"], filename="w.png", export=["web"])
+    atlas = json.loads((tmp_path / "w.json").read_text(encoding="utf8"))
+    assert atlas["meta"]["image"] == "w.png"
+    assert len(atlas["animations"]["walk_down"]) == 9
+    assert atlas["frames"]["walk_down_0"]["frame"] == {"x": 0, "y": 640, "w": 64, "h": 64}
+    html = (tmp_path / "w_demo.html").read_text(encoding="utf8")
+    assert '"w.png"' in html and "walk_down" in html
+
+
+def test_exporta_json_do_site(tmp_path):
+    import json
+    s.generate_character(FERREIRO, animations=["walk"], filename="st.png", export=["site"])
+    doc = json.loads((tmp_path / "st_site.json").read_text(encoding="utf8"))
+    assert doc["version"] == 1 and s.from_site_url(doc["url"])["items"][0]["id"] == "body/body"
+
+
+def test_export_invalido():
+    assert "error" in s.generate_character(FERREIRO, export=["xyz"])
+
+
+# ---------- prévia animada e links antigos ----------
+def test_previa_animada_gif():
+    import io
+    data = s.preview_character(FERREIRO, animation="walk")[0].data
+    gif = Image.open(io.BytesIO(data))
+    assert gif.format == "GIF" and gif.n_frames > 1 and gif.size == (4 * 64 * 3, 64 * 3)
+    parada = Image.open(io.BytesIO(s.preview_character(FERREIRO, animated=False)[0].data))
+    assert parada.format == "PNG"
+
+
+def test_link_com_nomes_antigos():
+    r = s.from_site_url("#sex=male&shoulders=Epaulets_gold&wrinkes=Wrinkles_light&legs=Fur_Pants_black")
+    assert r["items"] == [{"id": "arms/shoulders/shoulders_epaulets", "color": "gold"},
+                          {"id": "head/head_wrinkles", "color": "light"},
+                          {"id": "legs/pants/legs_formal", "color": "black"}]
+    assert "unresolved" not in r

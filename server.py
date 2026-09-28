@@ -9,14 +9,18 @@ import json
 import os
 import random
 import re
+import threading
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from mcp.server.mcpserver import Image as MCPImage
 from mcp.server.mcpserver import MCPServer
 import numpy as np
 from PIL import Image
+
+import exporters
 
 ROOT = Path(__file__).parent
 REPO = ROOT / "lpc"
@@ -135,7 +139,11 @@ def _hex(h):
 _used_files = set()  # PNGs usados na geração atual (para os créditos)
 
 
-def _fetch(rel):
+MASK_COLOR = (255, 44, 230)  # camadas de máscara são pintadas nesse rosa e depois apagadas
+
+
+def _download(rel):
+    """Garante o PNG no cache; devolve o caminho local ou None se não existir."""
     files = _sprite_files()
     if files is not None and rel not in files:
         return None  # não existe no repositório: nem tenta baixar
@@ -143,13 +151,39 @@ def _fetch(rel):
     if not local.exists():
         local.parent.mkdir(parents=True, exist_ok=True)
         try:
-            local.write_bytes(urllib.request.urlopen(RAW + rel, timeout=30).read())
+            data = urllib.request.urlopen(RAW + rel, timeout=30).read()
         except Exception:
-            local.write_bytes(b"")  # marca como inexistente
-    if not local.stat().st_size:
+            data = b""  # marca como inexistente
+        tmp = local.with_suffix(f".{threading.get_ident()}.tmp")
+        tmp.write_bytes(data)
+        tmp.replace(local)
+    return local if local.stat().st_size else None
+
+
+def _prefetch(rels):
+    """Baixa vários PNGs ao mesmo tempo (a primeira geração fica bem mais rápida)."""
+    todo = [r for r in set(rels) if not (CACHE / r).exists()]
+    if todo:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            list(pool.map(_download, todo))
+
+
+def _fetch(rel):
+    local = _download(rel)
+    if local is None:
         return None
     _used_files.add(rel)
     return Image.open(local).convert("RGBA")
+
+
+def _apply_mask(img):
+    """Apaga os pixels rosa das camadas de máscara (ex.: perna de pau esconde a perna)."""
+    arr = np.array(img)
+    pink = (arr[..., 0] == MASK_COLOR[0]) & (arr[..., 1] == MASK_COLOR[1]) & (arr[..., 2] == MASK_COLOR[2])
+    if pink.any():
+        arr[pink] = 0
+        return Image.fromarray(arr, "RGBA")
+    return img
 
 
 def _color_list(it):
@@ -177,21 +211,27 @@ def _recolor(img, d, colors):
     return Image.fromarray(arr, "RGBA")
 
 
-def _item_file(d, it, path, anim=None):
-    """PNG de uma camada: '<path><anim>.png', '<path><anim>/<variante>.png' ou,
+def _item_rel(d, it, path, anim=None):
+    """Caminho do PNG de uma camada: '<path><anim>.png', '<path><anim>/<variante>.png' ou,
     em animações especiais (anim=None), '<path><variante>.png'."""
     colors = _color_list(it)
     if d.get("variants"):
         v = it.get("variant") or (colors[0] if colors[0] in d["variants"] else d["variants"][0])
         v = v.replace(" ", "_")
-        return _fetch(f"{path}{anim}/{v}.png" if anim else f"{path}{v}.png")
-    img = _fetch(f"{path}{anim}.png" if anim else f"{path}.png")
-    return _recolor(img, d, colors) if img is not None else None
+        return f"{path}{anim}/{v}.png" if anim else f"{path}{v}.png"
+    return f"{path}{anim}.png" if anim else f"{path}.png"
+
+
+def _item_file(d, it, path, anim=None):
+    img = _fetch(_item_rel(d, it, path, anim))
+    if img is None or d.get("variants"):
+        return img
+    return _recolor(img, d, _color_list(it))
 
 
 def _layer_image(d, layer, body, anim, variant, colors):
     path = layer.get(body)
-    if not path or layer.get("custom_animation") or layer.get("is_mask"):
+    if not path or layer.get("custom_animation"):
         return None
     return _item_file(d, {"variant": variant, "color": colors}, path, anim)
 
@@ -252,7 +292,7 @@ def _render_custom(name, layers, body):
     drawn = set()
     for _, _, d, layer, it in layers:
         path = layer.get(body)
-        if not path or layer.get("is_mask"):
+        if not path:
             continue
         custom = layer.get("custom_animation")
         if custom == name:
@@ -271,7 +311,7 @@ def _render_custom(name, layers, body):
         else:
             continue
         drawn.add(it["id"])
-    return sheet, drawn
+    return _apply_mask(sheet), drawn
 
 
 # ---------- ferramentas MCP ----------
@@ -392,7 +432,8 @@ def get_item(item_id: str) -> dict:
 @mcp.tool()
 def generate_character(items: list[dict], body_type: str = "male",
                        animations: list[str] | None = None, filename: str = "character.png",
-                       layout: str = "standard", split: bool = False) -> dict:
+                       layout: str = "standard", split: bool | str | list[str] = False,
+                       export: list[str] | None = None) -> dict:
     """Gera a spritesheet do personagem e salva em PNG.
 
     items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
@@ -407,19 +448,109 @@ def generate_character(items: list[dict], body_type: str = "male",
            mesma posição; animações especiais vêm abaixo, a partir de y=3456). É o formato
            que importadores de Godot/Unity/RPG Maker esperam.
            "compact" = só as animações pedidas, empilhadas.
-    split: também salva cada animação num PNG separado (pasta <nome>_anims/).
+    split: também salva em partes. True ou "animation" = um PNG por animação (<nome>_anims/);
+           "frame" = um PNG por quadro (<nome>_frames/<animação>/<direção>_NN.png);
+           "item" = uma folha por item (<nome>_items/), para trocar roupas no jogo.
+           Pode ser uma lista: ["animation", "frame"].
+    export: arquivos prontos para engines: "godot" (SpriteFrames .tres), "unity" (.meta com os
+           sprites fatiados + clipes .anim), "web" (atlas JSON para Phaser/PixiJS + página de
+           demonstração), "site" (JSON para o botão "Import from Clipboard" do site).
     Sempre salva <nome>_credits.txt e <nome>_credits.csv com autores e licenças das artes usadas.
     """
-    anims = animations or ANIMATIONS
     if layout not in ("standard", "compact"):
         return {"error": "layout deve ser 'standard' ou 'compact'"}
+    if split is True:
+        split_modes = ["animation"]
+    elif not split:
+        split_modes = []
+    else:
+        split_modes = [split] if isinstance(split, str) else list(split)
+    bad = set(split_modes) - {"animation", "item", "frame"}
+    if bad:
+        return {"error": f"split inválido: {sorted(bad)}. Use animation, item e/ou frame."}
+    bad = set(export or []) - set(EXPORTERS)
+    if bad:
+        return {"error": f"export inválido: {sorted(bad)}. Use {sorted(EXPORTERS)}."}
+
+    comp = _compose(items, body_type, animations)
+    if "error" in comp:
+        return comp
+    items, rows = comp["items"], comp["rows"]
+    final, index = _assemble(rows, layout)
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / filename
+    final.save(path)
+    result = {"file": str(path), "size": list(final.size), "frame": 64, "layout": layout,
+              "animations": index}
+    used = set(_used_files)
+
+    if "animation" in split_modes:
+        folder = OUT / f"{path.stem}_anims"
+        folder.mkdir(exist_ok=True)
+        for anim, s, _ in rows:
+            s.save(folder / f"{anim}.png")
+        result["split_folder"] = str(folder)
+    if "frame" in split_modes:
+        folder = OUT / f"{path.stem}_frames"
+        for anim, s, frame in rows:
+            info = index[anim]
+            for r, direction in enumerate(info["directions"]):
+                sub = folder / anim
+                sub.mkdir(parents=True, exist_ok=True)
+                for c in range(info["columns"]):
+                    cell = s.crop((c * frame, r * frame, (c + 1) * frame, (r + 1) * frame))
+                    if cell.getbbox():
+                        cell.save(sub / f"{direction}_{c:02d}.png")
+        result["frames_folder"] = str(folder)
+    if "item" in split_modes:
+        folder = OUT / f"{path.stem}_items"
+        folder.mkdir(exist_ok=True)
+        for it in items:
+            one = _compose([it], body_type, animations, inherit_from=items)
+            if "error" not in one:
+                img, _ = _assemble(one["rows"], layout, like=index)
+                img.save(folder / f"{it['id'].replace('/', '__')}.png")
+        result["items_folder"] = str(folder)
+
+    _used_files.clear()
+    _used_files.update(used)
+    result["credits"] = _write_credits(_credits(items), OUT / path.stem)
+    if export:
+        result["exports"] = {e: EXPORTERS[e](path, final, index, items, body_type) for e in export}
+    if comp["missing"]:
+        # item sem arte para esse corpo/animação: não aparece nessas linhas
+        result["missing"] = comp["missing"]
+    if comp["warnings"]:
+        result["warnings"] = comp["warnings"]
+    return result
+
+
+DIRECTIONS = ["up", "left", "down", "right"]
+
+
+def _compose(items, body_type, animations=None, inherit_from=None):
+    """Monta as camadas de cada animação. Devolve {items, rows, missing, warnings}
+    (rows = [(animação, imagem, tamanho do quadro)]) ou {error}."""
+    anims = animations or ANIMATIONS
     _used_files.clear()
     for it in items:
         if it["id"] not in ITEMS:
             return {"error": f"item desconhecido: {it['id']}"}
+    if body_type not in BODY_TYPES:
+        return {"error": f"body_type deve ser um de {BODY_TYPES}"}
+
+    # um item por tipo, como no site: o último pedido vence
+    warnings, by_type = [], {}
+    for it in items:
+        t = ITEMS[it["id"]].get("type_name")
+        if t in by_type and by_type[t]["id"] != it["id"]:
+            warnings.append(f"{it['id']} substituiu {by_type[t]['id']} (mesmo tipo: {t})")
+        by_type[t] = it
+    items = [it for it in items if by_type.get(ITEMS[it["id"]].get("type_name")) is it]
 
     # cor da pele: itens com match_body_color sem cor herdam a cor do corpo
-    skin = next((it.get("color") for it in items
+    skin = next((it.get("color") for it in (inherit_from or items)
                  if ITEMS[it["id"]].get("match_body_color") and it.get("color")), None)
     items = [dict(it, color=skin) if skin and not it.get("color")
              and ITEMS[it["id"]].get("match_body_color") else it for it in items]
@@ -432,13 +563,25 @@ def generate_character(items: list[dict], body_type: str = "male",
                 layers.append((v.get("zPos", 0), n, d, v, it))
     layers.sort(key=lambda t: (t[0], t[1]))
 
-    rows, missing = [], {}
+    customs = []
+    for _, _, _, layer, _ in layers:
+        name = layer.get("custom_animation")
+        if name and layer.get(body_type) and name not in customs and _custom_base(name) in anims:
+            customs.append(name)
 
-    def note_missing(anim, drawn, only=None):
-        for it in items:
-            if it["id"] not in drawn and (only is None or it["id"] in only):
-                missing.setdefault(it["id"], []).append(anim)
+    # baixa tudo o que vai ser usado de uma vez, em paralelo
+    rels = []
+    for _, _, d, layer, it in layers:
+        path = layer.get(body_type)
+        if not path:
+            continue
+        if layer.get("custom_animation"):
+            rels.append(_item_rel(d, it, path))
+        else:
+            rels += [_item_rel(d, it, path, a) for a in anims]
+    _prefetch(rels)
 
+    rows, missing, drawn_in = [], {}, {}
     for anim in anims:
         sheet, drawn = None, set()
         for _, _, d, layer, it in layers:
@@ -453,19 +596,19 @@ def generate_character(items: list[dict], body_type: str = "male",
                 grown.paste(sheet, (0, 0))
                 sheet = grown
             sheet.alpha_composite(img, (0, 0))
-        if sheet is not None:
-            rows.append((anim, sheet, 64))
-            # itens que só têm animação especial nessa base não contam como faltando aqui
-            special = {it["id"] for _, _, _, l, it in layers
-                       if l.get("custom_animation") and l.get(body_type)
-                       and _custom_base(l["custom_animation"]) == anim}
-            note_missing(anim, drawn | special)
+        if sheet is None:
+            continue
+        rows.append((anim, _apply_mask(sheet), 64))
+        # itens que só têm animação especial nessa base não contam como faltando aqui
+        special = {it["id"] for _, _, _, l, it in layers
+                   if l.get("custom_animation") and l.get(body_type)
+                   and _custom_base(l["custom_animation"]) == anim}
+        for it in items:
+            if it["id"] in drawn | special:
+                drawn_in.setdefault(it["id"], []).append(anim)
+            else:
+                missing.setdefault(it["id"], []).append(anim)
 
-    customs = []
-    for _, _, _, layer, _ in layers:
-        name = layer.get("custom_animation")
-        if name and layer.get(body_type) and name not in customs and _custom_base(name) in anims:
-            customs.append(name)
     for name in customs:
         sheet, _ = _render_custom(name, layers, body_type)
         if sheet is not None:
@@ -473,47 +616,57 @@ def generate_character(items: list[dict], body_type: str = "male",
 
     if not rows:
         return {"error": "nenhuma camada encontrada para essa combinação"}
+    # aviso curto: se o item falta na maioria, diz só onde ele aparece
+    for item_id, lacking in list(missing.items()):
+        present = drawn_in.get(item_id, [])
+        if present and len(lacking) > len(present):
+            missing[item_id] = {"only_in": present}
+    return {"items": items, "rows": rows, "missing": missing, "warnings": warnings}
 
+
+def _assemble(rows, layout, like=None):
+    """Junta as animações numa imagem só. `like` reaproveita as posições de outro índice."""
     index = {}
     if layout == "standard":
         custom_h = sum(s.height for a, s, _ in rows if a not in STANDARD_ROWS)
         w = max([SHEET_WIDTH] + [s.width for _, s, _ in rows])
-        final = Image.new("RGBA", (w, SHEET_HEIGHT + custom_h))
+        h = SHEET_HEIGHT + custom_h
+        if like:
+            h = max(h, max(i["y"] + i["height"] for i in like.values()))
+            w = max(w, max(i["columns"] * i["frame"] for i in like.values()))
+        final = Image.new("RGBA", (w, h))
         y = SHEET_HEIGHT
         for anim, s, frame in rows:
-            if anim in STANDARD_ROWS:
+            if like and anim in like:
+                pos = like[anim]["y"]
+            elif anim in STANDARD_ROWS:
                 pos = STANDARD_ROWS[anim] * 64
             else:
                 pos, y = y, y + s.height
             final.paste(s, (0, pos))
-            index[anim] = {"y": pos, "height": s.height, "frame": frame}
+            index[anim] = _row_info(anim, s, frame, pos)
     else:
+        if like:
+            final = Image.new("RGBA", (max(i["columns"] * i["frame"] for i in like.values()),
+                                       max(i["y"] + i["height"] for i in like.values())))
+            for anim, s, frame in rows:
+                if anim in like:
+                    final.paste(s, (0, like[anim]["y"]))
+                    index[anim] = _row_info(anim, s, frame, like[anim]["y"])
+            return final, index
         final = Image.new("RGBA", (max(s.width for _, s, _ in rows), sum(s.height for _, s, _ in rows)))
         y = 0
         for anim, s, frame in rows:
             final.paste(s, (0, y))
-            index[anim] = {"y": y, "height": s.height, "frame": frame}
+            index[anim] = _row_info(anim, s, frame, y)
             y += s.height
+    return final, index
 
-    OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / filename
-    final.save(path)
-    result = {"file": str(path), "size": list(final.size), "frame": 64, "layout": layout,
-              "animations": index}
 
-    if split:
-        folder = OUT / f"{path.stem}_anims"
-        folder.mkdir(exist_ok=True)
-        for anim, s, _ in rows:
-            s.save(folder / f"{anim}.png")
-        result["split_folder"] = str(folder)
-
-    credits = _credits(items)
-    result["credits"] = _write_credits(credits, OUT / path.stem)
-    if missing:
-        # item sem arte para esse corpo/animação: não aparece nessas linhas
-        result["missing"] = missing
-    return result
+def _row_info(anim, img, frame, y):
+    n_dirs = max(1, img.height // frame)
+    return {"y": y, "height": img.height, "frame": frame, "columns": img.width // frame,
+            "directions": DIRECTIONS if n_dirs == 4 else ["down"] * n_dirs}
 
 
 def _credits(items):
@@ -606,14 +759,45 @@ def _match_param(type_name, value, by_type):
     return None
 
 
+def _aliases():
+    """Nomes antigos que o site ainda aceita em links (campo "aliases" das definições):
+    (tipos renomeados, prefixos de nome renomeados, valores exatos -> item)."""
+    types, prefixes, exact = {}, {}, {}
+    for item_id, d in ITEMS.items():
+        for orig, alias in d.get("aliases", {}).items():
+            # formato: "[tipo=]valor"
+            o_type, o_val = orig.split("=", 1) if "=" in orig else ("", orig)
+            a_type, a_val = alias.split("=", 1) if "=" in alias else ("", alias)
+            type_name = o_type or d["type_name"]
+            if o_val == "*" and a_val == "*":
+                types[type_name] = a_type or d["type_name"]
+            elif o_val.endswith("_*") and a_val.endswith("_*"):
+                prefixes.setdefault(type_name, []).append((o_val[:-1], a_val[:-1]))
+            else:
+                target = a_val.split(".")[-1]  # 'metal.bronze' / 'all.lpcr.olivine' -> cor
+                if target in (d.get("variants") or []):
+                    exact.setdefault(type_name, {})[o_val.lower()] = {"id": item_id, "variant": target}
+                else:
+                    exact.setdefault(type_name, {})[o_val.lower()] = {"id": item_id, "color": target}
+    return types, prefixes, exact
+
+
 def parse_url(url: str) -> dict:
     frag = url.split("#", 1)[1] if "#" in url else url
     params = [p.split("=", 1) for p in frag.split("&") if "=" in p]
     by_type, subs = _by_type(), _sub_parts()
+    alias_types, alias_prefixes, alias_exact = _aliases()
     body, items, unresolved, extras = "male", [], {}, []
     for key, value in params:
+        value = urllib.parse.unquote(value)
+        key = alias_types.get(key, key)
+        for old, new in alias_prefixes.get(key, []):
+            if value.startswith(old):
+                value = new + value[len(old):]
         if key in ("sex", "bodyType"):
             body = value
+        elif value.lower() in alias_exact.get(key, {}):
+            items.append(dict(alias_exact[key][value.lower()]))
         elif key in by_type:
             it = _match_param(key, value, by_type)
             if it:
@@ -788,39 +972,65 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
 
 
 # ---------- prévia no chat ----------
-@mcp.tool()
-def preview_character(items: list[dict], body_type: str = "male", animation: str = "walk"):
-    """Mostra uma prévia do personagem (4 direções, ampliada) direto no chat, sem salvar
-    o arquivo final. Use para conferir o visual antes de generate_character.
-    animation: walk, idle, slash... ou uma especial (tool_hammer, slash_128, walk_128...)."""
-    global OUT
+PREVIEW_BG = (236, 236, 236, 255)
+
+
+def _preview_frames(items, body_type, animation):
+    """Quadros da prévia: para cada instante, as 4 direções lado a lado. Devolve (quadros, fps, nota)."""
     special = animation in _custom_animations()
     base = _custom_base(animation) if special else animation
     if base not in ANIMATIONS:
-        return f"animação desconhecida: {animation}. Use uma de {ANIMATIONS} ou uma especial."
-    saved, OUT = OUT, CACHE / "_preview"
-    try:
-        r = generate_character(items, body_type, [base], "preview.png", "compact")
-    finally:
-        OUT = saved
-    if "error" in r:
-        return r["error"]
-    info = r["animations"].get(animation)
-    if not info:
-        return f"a animação '{animation}' não existe para esses itens: {list(r['animations'])}"
-    sheet = Image.open(r["file"])
-    f, y0 = info["frame"], info["y"]
-    col = 1 if animation == "walk" else (2 if special else 0)  # quadro representativo
-    strip = Image.new("RGBA", (f * 4, f), (236, 236, 236, 255))
-    for d in range(4):  # cima, esquerda, baixo, direita
-        strip.alpha_composite(sheet.crop((col * f, y0 + d * f, (col + 1) * f, y0 + (d + 1) * f)), (d * f, 0))
+        raise ValueError(f"animação desconhecida: {animation}. Use uma de {ANIMATIONS} ou uma especial.")
+    comp = _compose(items, body_type, [base])
+    if "error" in comp:
+        raise ValueError(comp["error"])
+    rows = {a: (img, f) for a, img, f in comp["rows"]}
+    if animation not in rows:
+        raise ValueError(f"a animação '{animation}' não existe para esses itens: {list(rows)}")
+    img, f = rows[animation]
+    info = _row_info(animation, img, f, 0)
+    clips = exporters.frames_of(img, {animation: info})
+    length = max(len(cells) for *_, cells in clips)
     scale = 3 if f == 64 else 2
+    frames = []
+    for i in range(length):
+        strip = Image.new("RGBA", (f * len(clips), f), PREVIEW_BG)
+        for d, (*_, cells) in enumerate(clips):
+            x, y, _ = cells[min(i, len(cells) - 1)]
+            strip.alpha_composite(img.crop((x, y, x + f, y + f)), (d * f, 0))
+        frames.append(strip.resize((strip.width * scale, strip.height * scale), Image.NEAREST))
+    note = {"animation": animation, "body_type": body_type, "frames": length,
+            "directions": [c[2] for c in clips]}
+    if comp["missing"]:
+        note["missing"] = comp["missing"]
+    if comp["warnings"]:
+        note["warnings"] = comp["warnings"]
+    return frames, exporters._fps(animation), note
+
+
+@mcp.tool()
+def preview_character(items: list[dict], body_type: str = "male", animation: str = "walk",
+                      animated: bool = True):
+    """Mostra o personagem direto no chat, sem salvar arquivos: as 4 direções lado a lado.
+    animated=True (padrão) devolve um GIF animado tocando a animação; False, uma imagem parada.
+    animation: walk, idle, slash, run... ou uma especial (tool_hammer, slash_128, walk_128...).
+    Use para conferir o visual antes de generate_character."""
+    try:
+        frames, fps, note = _preview_frames(items, body_type, animation)
+    except ValueError as e:
+        return str(e)
     buf = io.BytesIO()
-    strip.resize((strip.width * scale, strip.height * scale), Image.NEAREST).save(buf, "PNG")
-    note = {"animation": animation, "body_type": body_type}
-    if r.get("missing"):
-        note["missing"] = r["missing"]
-    return [MCPImage(data=buf.getvalue(), format="png"), json.dumps(note, ensure_ascii=False)]
+    if animated and len(frames) > 1:
+        rgb = [fr.convert("RGB") for fr in frames]
+        rgb[0].save(buf, "GIF", save_all=True, append_images=rgb[1:], duration=int(1000 / fps),
+                    loop=0, disposal=2)
+        fmt = "gif"
+    else:
+        # quadro parado: no walk o 1º quadro é a pose de pé; usa o do meio do movimento
+        frames[min(1, len(frames) - 1) if animation.startswith("walk") else 0].save(buf, "PNG")
+        fmt = "png"
+    return [MCPImage(data=buf.getvalue(), format=fmt), json.dumps(note, ensure_ascii=False)]
+
 
 # ---------- atualização ----------
 @mcp.tool()
@@ -847,6 +1057,24 @@ def update_definitions(clear_image_cache: bool = False) -> dict:
     return {"updated": after != before, "from": before[:10], "to": after[:10],
             "items_before": count_before, "items_now": len(ITEMS),
             "image_cache_cleared": bool(clear_image_cache and after != before)}
+
+
+# ---------- exportação ----------
+def _export_site(path, img, index, items, body_type):
+    """JSON aceito pelo botão "Import from Clipboard" do site do gerador."""
+    out = Path(path).with_name(f"{Path(path).stem}_site.json")
+    out.write_text(json.dumps({"version": 1, "url": build_url(items, body_type)}, indent=2),
+                   encoding="utf8")
+    return {"file": str(out), "url": build_url(items, body_type),
+            "how_to_use": "No site, copie o conteúdo do arquivo e clique em Import from Clipboard (JSON)."}
+
+
+EXPORTERS = {
+    "godot": lambda path, img, index, items, body: exporters.godot(path, img, index),
+    "unity": lambda path, img, index, items, body: exporters.unity(path, img, index),
+    "web": lambda path, img, index, items, body: exporters.web(path, img, index),
+    "site": _export_site,
+}
 
 
 if __name__ == "__main__":
