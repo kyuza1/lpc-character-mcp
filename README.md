@@ -43,9 +43,21 @@ usado (fica em cache na pasta `cache/`).
 | Ferramenta | O que faz |
 |---|---|
 | `list_categories` | Lista categorias de itens |
-| `search_items(query, category)` | Busca itens por nome (ex.: "sword", "hair") |
-| `get_item(item_id)` | Cores e variantes de um item |
-| `generate_character(items, body_type, animations, filename)` | Gera o PNG |
+| `search_items(query, category, body_type, animation, type_name)` | Busca itens com filtros (ex.: aventais com arte de `idle` no corpo `male`) |
+| `get_item(item_id)` | Cores, variantes, partes com cor separada e animações que têm arte em cada corpo |
+| `generate_character(items, body_type, animations, filename, layout, split)` | Gera o PNG + créditos |
+| `preview_character(items, body_type, animation)` | Mostra uma prévia (4 direções) direto no chat |
+| `random_character(body_type, seed, fixed_items)` | Sorteia um personagem (não gera imagem) |
+| `generate_batch(count, body_types, seed, prefix, fixed_items, ...)` | Gera vários NPCs aleatórios de uma vez |
+| `from_site_url(url)` | Lê um link do site do gerador e devolve os itens |
+| `to_site_url(items, body_type)` | Monta o link do site para abrir o personagem no navegador |
+| `update_definitions(clear_image_cache)` | Atualiza itens e paletas do repositório oficial |
+
+### Exemplos de pedidos
+- "Gera um ferreiro moreno com avental de couro e martelo"
+- "Abre este link e gera o personagem: https://liberatedpixelcup.github.io/...#sex=male&body=..."
+- "Gera 10 aldeões aleatórios com seed 1"
+- "Me mostra uma prévia antes de gerar"
 
 Exemplo de `items`:
 ```json

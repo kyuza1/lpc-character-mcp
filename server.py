@@ -196,11 +196,16 @@ def _custom_animations():
     global _CUSTOM_ANIMS
     if _CUSTOM_ANIMS is None:
         local = REPO / "sources" / "custom-animations.ts"
+        cached = CACHE / "_custom-animations.ts"
         if local.exists():
             text = local.read_text(encoding="utf8")
+        elif cached.exists():
+            text = cached.read_text(encoding="utf8")
         else:
             url = RAW.replace("/spritesheets/", "/sources/custom-animations.ts")
             text = urllib.request.urlopen(url, timeout=30).read().decode("utf8")
+            CACHE.mkdir(exist_ok=True)
+            cached.write_text(text, encoding="utf8")
         body = text[text.index("customAnimations: Record"):]
         _CUSTOM_ANIMS = {}
         for m in re.finditer(r"\n  (\w+): \{(.*?)\n  \},", body, re.S):
@@ -807,6 +812,33 @@ def preview_character(items: list[dict], body_type: str = "male", animation: str
     if r.get("missing"):
         note["missing"] = r["missing"]
     return [MCPImage(data=buf.getvalue(), format="png"), json.dumps(note, ensure_ascii=False)]
+
+# ---------- atualização ----------
+@mcp.tool()
+def update_definitions(clear_image_cache: bool = False) -> dict:
+    """Atualiza os itens e paletas a partir do repositório oficial do gerador LPC
+    (novos itens, correções). clear_image_cache=True também apaga os PNGs baixados,
+    para que sejam baixados de novo na versão nova."""
+    global ITEMS, _FILES, _CUSTOM_ANIMS
+    import shutil
+    import subprocess
+    run = lambda *a: subprocess.run(a, cwd=REPO, check=True, capture_output=True,
+                                    text=True, encoding="utf8").stdout.strip()
+    before, count_before = run("git", "rev-parse", "HEAD"), len(ITEMS)
+    run("git", "fetch", "--depth", "1", "--filter=blob:none", "origin", "master")
+    run("git", "reset", "--hard", "FETCH_HEAD")
+    after = run("git", "rev-parse", "HEAD")
+    if after != before:
+        ITEMS, _FILES, _CUSTOM_ANIMS = _load_items(), None, None
+        (CACHE / "_custom-animations.ts").unlink(missing_ok=True)
+        if clear_image_cache:
+            for p in CACHE.iterdir():
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+    return {"updated": after != before, "from": before[:10], "to": after[:10],
+            "items_before": count_before, "items_now": len(ITEMS),
+            "image_cache_cleared": bool(clear_image_cache and after != before)}
+
 
 if __name__ == "__main__":
     mcp.run()

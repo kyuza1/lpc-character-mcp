@@ -264,3 +264,10 @@ def test_busca_com_filtros():
     assert all(x["type"] == "hair" for x in s.search_items(type_name="hair", limit=10))
     assert all("female" in s.get_item(x["id"])["body_types"]
                for x in s.search_items(category="torso", body_type="female", limit=10))
+
+
+def test_todas_as_ferramentas_registradas():
+    nomes = {t.name for t in asyncio.run(s.mcp.list_tools())}
+    assert nomes == {"list_categories", "search_items", "get_item", "generate_character",
+                     "preview_character", "random_character", "generate_batch",
+                     "from_site_url", "to_site_url", "update_definitions"}
