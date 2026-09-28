@@ -33,7 +33,8 @@ Para usar a versão mais recente direto do GitHub (antes de sair no PyPI), troqu
 Os personagens são salvos em `~/lpc-characters` (no Windows,
 `C:\Users\<você>\lpc-characters`). Para mudar, defina `LPC_OUTPUT_DIR` — por exemplo,
 apontando para a pasta de sprites do seu projeto Godot/Unity. `lpc-character-mcp --where`
-mostra todas as pastas usadas.
+mostra todas as pastas usadas. As mensagens saem em inglês por padrão; para português,
+defina `LPC_LANG=pt` (no Claude Code: `claude mcp add lpc --scope user -e LPC_LANG=pt -- uvx lpc-character-mcp`).
 
 ### Claude Code
 ```

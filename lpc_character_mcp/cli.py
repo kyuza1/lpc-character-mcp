@@ -3,19 +3,21 @@ definições ao carregar)."""
 import sys
 
 from . import __version__
+from .i18n import t
 
-HELP = """lpc-character-mcp — servidor MCP que gera personagens LPC em pixel art.
+HELP = """lpc-character-mcp - MCP server that generates LPC pixel-art characters.
 
-Uso:
-  lpc-character-mcp            inicia o servidor MCP (stdio) — é isso que o cliente chama
-  lpc-character-mcp --setup    baixa as definições dos itens e sai (rode uma vez ao instalar)
-  lpc-character-mcp --where    mostra onde ficam os dados, o cache e os personagens gerados
-  lpc-character-mcp --clear-cache [dias]   apaga as imagens em cache (ou só as sem uso há N dias)
+Usage:
+  lpc-character-mcp            starts the MCP server (stdio) - this is what the client runs
+  lpc-character-mcp --setup    downloads the item definitions and exits (run once after install)
+  lpc-character-mcp --where    shows where data, cache and generated characters live
+  lpc-character-mcp --clear-cache [days]   deletes cached images (or only those unused for N days)
   lpc-character-mcp --version
 
-Variáveis de ambiente:
-  LPC_OUTPUT_DIR   pasta dos personagens gerados (padrão: ~/lpc-characters)
-  LPC_DATA_DIR     pasta das definições e do cache de imagens
+Environment variables:
+  LPC_OUTPUT_DIR   folder for generated characters (default: ~/lpc-characters)
+  LPC_DATA_DIR     folder for item definitions and the image cache
+  LPC_LANG         message language: en (default) or pt
 """
 
 
@@ -29,17 +31,13 @@ def main(argv=None):
         print(f"lpc-character-mcp {__version__}")
     elif "--where" in args:
         from .paths import DATA, OUT
-        print(f"dados:       {DATA}")
-        print(f"definições:  {DATA / 'lpc' / 'sheet_definitions'}")
-        print(f"cache:       {DATA / 'cache'}")
-        print(f"personagens: {OUT}")
+        print(t("cli_where", data=DATA, defs=DATA / "lpc" / "sheet_definitions", cache=DATA / "cache", out=OUT))
     elif "--clear-cache" in args:
         from .server import clear_cache
         rest = args[args.index("--clear-cache") + 1:]
         days = int(rest[0]) if rest and rest[0].isdigit() else 0
         r = clear_cache(days)
-        print(f"{r['files']} arquivos apagados, {r['freed_mb']} MB liberados "
-              f"(cache agora: {r['cache_now_mb']} MB em {r['cache_dir']})")
+        print(t("cli_cleared", files=r["files"], mb=r["freed_mb"], now=r["cache_now_mb"], dir=r["cache_dir"]))
     elif "--setup" in args:
         from .catalog import DEFS, ITEMS, _sprite_files
         from .paths import OUT
@@ -48,9 +46,9 @@ def main(argv=None):
         # animações especiais para o primeiro uso ser rápido
         _sprite_files()
         _custom_animations()
-        print(f"lpc-character-mcp pronto: {len(ITEMS)} itens.")
-        print(f"Definições em {DEFS}")
-        print(f"Personagens serão salvos em {OUT}")
+        print(t("cli_ready", n=len(ITEMS)))
+        print(t("cli_defs", path=DEFS))
+        print(t("cli_out", path=OUT))
     else:
         from .server import mcp
         mcp.run()

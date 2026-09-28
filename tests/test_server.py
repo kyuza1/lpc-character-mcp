@@ -248,7 +248,7 @@ def test_previa_de_animacao_especial():
 
 
 def test_previa_animacao_invalida():
-    assert "desconhecida" in s.preview_character(FERREIRO, animation="xyz")
+    assert "unknown animation" in s.preview_character(FERREIRO, animation="xyz")
 
 
 def test_animacoes_reais_de_cada_item():
@@ -290,7 +290,7 @@ def test_mascara_rosa_e_apagada():
 def test_item_repetido_do_mesmo_tipo_substitui():
     r = s.generate_character([{"id": "body/body"}, {"id": "hair/short/hair_plain"},
                               {"id": "hair/long/hair_long"}], animations=["walk"], filename="dup.png")
-    assert r["warnings"] == ["hair/long/hair_long substituiu hair/short/hair_plain (mesmo tipo: hair)"]
+    assert r["warnings"] == ["hair/long/hair_long replaced hair/short/hair_plain (same type: hair)"]
 
 
 def test_aviso_curto_de_item_faltando():
@@ -404,7 +404,15 @@ def test_demo_web_sem_marcadores_sobrando(tmp_path):
     html = (tmp_path / "dm_demo.html").read_text(encoding="utf8")
     import re
     assert not re.findall(r"__[A-Z_]+__", html)
-    assert 'img.src = "dm.png?v=' in html and "<title>dm · Personagem LPC</title>" in html
+    assert 'img.src = "dm.png?v=' in html and "<title>dm · LPC character</title>" in html
+    assert "__T:" not in html and '<html lang="en">' in html
+
+
+def test_demo_web_em_portugues(tmp_path, monkeypatch):
+    monkeypatch.setenv("LPC_LANG", "pt")
+    s.generate_character(FERREIRO, animations=["walk"], filename="dp.png", export=["web"])
+    html = (tmp_path / "dp_demo.html").read_text(encoding="utf8")
+    assert "__T:" not in html and "<span>Animação</span>" in html and 'lang="pt-BR"' in html
 
 
 # ---------- animações completas ----------
@@ -437,7 +445,7 @@ def test_relatorio_avisa_e_sugere_alternativa():
     apron = check["incomplete_items"]["torso/aprons/torso_aprons_apron"]
     assert "idle" in apron["missing"]
     assert "torso/aprons/torso_aprons_overalls" in apron["complete_alternatives"]
-    assert check["summary"].startswith("ATENÇÃO")
+    assert check["summary"].startswith("WARNING")
     assert "tool_hammer" in check["equipment_only_in"]["tools/tool_hammer"]
 
 
@@ -473,7 +481,7 @@ def test_aleatorios_so_com_itens_completos():
 
 def test_previa_e_lote_informam_completude(tmp_path):
     note = __import__("json").loads(s.preview_character(FERREIRO)[1])
-    assert note["animation_check"].startswith("ATENÇÃO")
+    assert note["animation_check"].startswith("WARNING")
     lote = s.generate_batch(2, seed=3, animations=["walk"], layout="compact")
     assert all(c["complete"] for c in lote["characters"])
 
@@ -502,7 +510,7 @@ def test_limitacao_do_corpo_separada_das_pecas():
                               {"id": "hair/short/hair_plain"}], "muscular")
     assert rep["body_missing"] == ["shoot", "climb", "emote", "combat_idle", "backslash", "halfslash"]
     assert rep["incomplete_items"] == {}  # o cabelo não é culpado pelo que o corpo não tem
-    assert "o corpo muscular do LPC não tem" in rep["summary"]
+    assert "the LPC muscular body has no" in rep["summary"]
     assert "prefer_complete" not in rep["summary"]  # nada a trocar
 
 
@@ -630,11 +638,33 @@ def test_lote_com_corpo_invalido_informa_erro():
 @pytest.mark.parametrize("flag, texto", [
     (["--version"], "lpc-character-mcp 0."),
     (["--help"], "--setup"),
-    (["--where"], "personagens:"),
-    (["--setup"], "lpc-character-mcp pronto:"),
-    (["--clear-cache", "9999"], "arquivos apagados"),
+    (["--where"], "characters:"),
+    (["--setup"], "lpc-character-mcp ready:"),
+    (["--clear-cache", "9999"], "files deleted"),
 ])
 def test_cli(flag, texto, capsys):
     from lpc_character_mcp import cli
     cli.main(flag)
     assert texto in capsys.readouterr().out
+
+
+# ---------- idioma ----------
+def test_mensagens_em_portugues_com_lpc_lang(monkeypatch, capsys):
+    monkeypatch.setenv("LPC_LANG", "pt-BR")
+    rep = s.animation_report([{"id": "body/body"}, {"id": "torso/aprons/torso_aprons_apron"}], "male")
+    assert rep["summary"].startswith("ATENÇÃO") and "Apron não tem" in rep["summary"]
+    r = s.generate_character([{"id": "body/body"}, {"id": "hair/short/hair_plain"},
+                              {"id": "hair/long/hair_long"}], animations=["walk"], filename="pt.png")
+    assert "substituiu" in r["warnings"][0]
+    assert "Autores:" in open(r["credits"]["file"], encoding="utf8").read()
+    from lpc_character_mcp import cli
+    cli.main(["--where"])
+    assert "personagens:" in capsys.readouterr().out
+
+
+def test_mensagens_em_ingles_por_padrao(monkeypatch):
+    monkeypatch.delenv("LPC_LANG", raising=False)
+    rep = s.animation_report([{"id": "body/body"}], "male")
+    assert rep["summary"] == "All animations are complete for every item."
+    from lpc_character_mcp.i18n import MESSAGES
+    assert all(set(v) == {"en", "pt"} for v in MESSAGES.values())  # toda mensagem nos 2 idiomas

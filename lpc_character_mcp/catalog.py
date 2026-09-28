@@ -4,6 +4,7 @@ import json
 import re
 import sys
 
+from .i18n import t
 from .paths import DATA
 
 REPO = DATA / "lpc"
@@ -26,8 +27,7 @@ def _ensure_definitions():
     import shutil
     import subprocess
     if not shutil.which("git"):
-        sys.exit("lpc-mcp: o Git não foi encontrado. Instale em https://git-scm.com/downloads "
-                 "e rode de novo (ele só é usado para baixar as definições dos itens).")
+        sys.exit(t("no_git"))
     url = "https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator.git"
     run = lambda *a, **kw: subprocess.run(a, check=True, capture_output=True, text=True, **kw)
     try:
@@ -35,7 +35,7 @@ def _ensure_definitions():
         run("git", "sparse-checkout", "set", "sheet_definitions", "palette_definitions", cwd=REPO)
     except subprocess.CalledProcessError as e:
         shutil.rmtree(REPO, ignore_errors=True)  # não deixa um clone pela metade
-        sys.exit(f"lpc-mcp: falha ao baixar as definições do GitHub (verifique a internet).\n{e.stderr}")
+        sys.exit(f"{t('download_failed')}\n{e.stderr}")
 
 
 _ensure_definitions()
@@ -299,17 +299,16 @@ def animation_report(items, body):
         report["equipment_only_in"] = equipment
     partes = []
     if body_missing:
-        partes.append(f"o corpo {body} do LPC não tem {', '.join(body_missing)} "
-                      f"(nenhuma peça resolve; use outro tipo de corpo se precisar delas)")
+        partes.append(t("report_body", body=body, anims=", ".join(body_missing)))
     for i, info in incomplete.items():
-        alt = f" (completos parecidos: {', '.join(info['complete_alternatives'])})"             if info["complete_alternatives"] else " (não há alternativa completa do mesmo tipo)"
-        partes.append(f"{ITEMS[i]['name']} não tem {', '.join(info['missing'])}{alt}")
+        alts = info["complete_alternatives"]
+        alt = t("report_alternatives", alts=", ".join(alts)) if alts else t("report_no_alternative")
+        partes.append(t("report_item", name=ITEMS[i]["name"], anims=", ".join(info["missing"])) + alt)
     if partes:
-        dica = (" Use prefer_complete=True para trocar por itens completos."
-                if any(v["complete_alternatives"] for v in incomplete.values()) else "")
-        report["summary"] = "ATENÇÃO: nem todas as animações ficaram completas: " + "; ".join(partes) + "." + dica
+        dica = t("report_hint") if any(v["complete_alternatives"] for v in incomplete.values()) else ""
+        report["summary"] = t("report_header") + "; ".join(partes) + "." + dica
     else:
-        report["summary"] = "Todas as animações estão completas para todos os itens."
+        report["summary"] = t("report_complete")
     return report
 
 

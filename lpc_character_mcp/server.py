@@ -14,6 +14,7 @@ from PIL import Image
 
 from . import exporters
 from . import catalog, render
+from .i18n import t
 from .paths import OUT
 from .catalog import (ANIMATIONS, CACHE, ITEMS, REPO, _colors_for, _default_color, _item_bodies, _recolor_entries, _special_animations, _swap_for_complete, animation_gaps, animation_report, complete_alternatives, is_complete, is_equipment, item_animations)
 from .render import (_assemble, _compose, _credits, _custom_animations, _custom_base, _missing_by_animation, _row_info, _used_files, _write_credits)
@@ -22,13 +23,14 @@ from .links import build_url, parse_url
 mcp = MCPServer(
     "lpc-character-generator",
     instructions=(
-        "Gera personagens LPC em pixel art. Ao escolher itens, prefira os que têm todas as "
-        "animações (search_items mostra 'complete' e lista os completos primeiro). Depois de "
-        "generate_character, SEMPRE leia 'animation_check': se complete=false, avise o usuário "
-        "quais itens não têm quais animações e ofereça as alternativas completas ou gerar de "
-        "novo com prefer_complete=True. Não use prefer_complete sem o usuário pedir ou "
-        "concordar, porque ele troca peças e muda o visual. Armas e ferramentas só aparecem nas animações delas "
-        "(equipment_only_in) — isso é normal. Use preview_character para mostrar o resultado."
+        "Generates LPC pixel-art characters. Reply in the user's language. When choosing items, "
+        "prefer ones that have every animation (search_items marks 'complete' and lists complete "
+        "items first). After generate_character, ALWAYS read 'animation_check': if complete=false, "
+        "tell the user which items lack which animations and offer the complete alternatives or "
+        "regenerating with prefer_complete=True. Do not use prefer_complete unless the user asks or "
+        "agrees, because it swaps items and changes the look. Weapons and tools only appear in their "
+        "own animations (equipment_only_in) - that is normal; animations the body itself lacks are "
+        "listed in body_missing. Use preview_character to show the result."
     ),
 )
 
@@ -36,7 +38,7 @@ mcp = MCPServer(
 # ---------- ferramentas MCP ----------
 @mcp.tool()
 def list_categories() -> dict:
-    """Lista as categorias de itens (ex.: body, hair, torso/clothes) com a quantidade de itens."""
+    """Lists item categories (e.g. body, hair, torso/shirts) with how many items each has."""
     cats = {}
     for i in ITEMS:
         cat = i.rsplit("/", 1)[0]
@@ -48,15 +50,15 @@ def list_categories() -> dict:
 def search_items(query: str = "", category: str = "", body_type: str = "",
                  animation: str = "", type_name: str = "", complete_only: bool = False,
                  limit: int = 50) -> list[dict]:
-    """Procura itens. Todos os filtros são opcionais e se combinam:
-    query: palavras no nome/id (todas precisam aparecer), ex.: "leather armour".
-    category: prefixo do id, ex.: 'hair', 'torso/shirts', 'weapons/sword'.
-    body_type: só itens que existem para esse corpo (male, female, teen...).
-    animation: só itens com arte nessa animação (idle, walk, slash...) para o body_type
-               (ou para male, se body_type não for dado). Evita surpresas como a túnica sem idle.
-    type_name: tipo do item (hair, clothes, legs, shoes, weapon, hat...).
-    complete_only: só itens com todas as animações. Sem isso, os completos vêm primeiro.
-    Cada resultado diz se é completo e quais animações faltam (para o body_type ou male)."""
+    """Searches items. All filters are optional and combine:
+    query: words in the name/id (all must match), e.g. "leather armour".
+    category: id prefix, e.g. 'hair', 'torso/shirts', 'weapons/sword'.
+    body_type: only items that exist for this body (male, female, teen...).
+    animation: only items with art for this animation (idle, walk, slash...) for body_type
+               (or male if body_type is not given).
+    type_name: item type (hair, clothes, legs, shoes, weapon, hat...).
+    complete_only: only items with every animation. Otherwise complete items come first.
+    Each result says whether it is complete and which animations are missing (for body_type or male)."""
     words = query.lower().split()
     body = body_type or "male"
     res = []
@@ -90,8 +92,8 @@ def search_items(query: str = "", category: str = "", body_type: str = "",
 
 @mcp.tool()
 def get_item(item_id: str) -> dict:
-    """Detalhes de um item: corpos suportados, animações com arte em cada corpo,
-    cores (recolor) ou variantes, partes com cores separadas e animações especiais."""
+    """Item details: supported bodies, animations with art per body, missing animations and
+    complete alternatives, colors or variants, multi-color parts and oversized animations."""
     d = ITEMS[item_id]
     bodies = _item_bodies(d)
     info = {"id": item_id, "name": d.get("name"), "type": d.get("type_name"),
@@ -131,40 +133,39 @@ def generate_character(items: list[dict], body_type: str = "male",
                        layout: str = "standard", split: bool | str | list[str] = False,
                        export: list[str] | None = None, prefer_complete: bool = False,
                        output_dir: str | None = None) -> dict:
-    """Gera a spritesheet do personagem e salva em PNG.
+    """Builds the character spritesheet and saves it as PNG.
 
-    Todo resultado traz `animation_check`: se todos os itens têm todas as animações e,
-    se não, quais faltam e alternativas completas. AVISE o usuário quando complete=false.
-    prefer_complete=True troca sozinho itens incompletos pelo parecido mais próximo que
-    tem todas as animações (mantendo a cor quando dá) e lista as trocas em `replaced`.
-    Só use com o aval do usuário: a troca muda o visual (ex.: avental vira macacão).
-    output_dir: pasta onde salvar (ex.: a pasta de sprites do projeto do jogo). Se ficar
-           dentro de um projeto Godot, o .tres já sai com o caminho res:// certo; num projeto
-           Unity, salve dentro de Assets/. Padrão: LPC_OUTPUT_DIR ou ~/lpc-characters.
+    Every result has `animation_check`: whether every item has every animation and, if not,
+    what is missing plus complete alternatives. TELL the user when complete=false.
+    prefer_complete=True swaps incomplete items for the closest item with every animation
+    (keeping the color when possible) and lists the swaps in `replaced`. Only use it with the
+    user's consent: it changes the look (e.g. apron becomes overalls).
+    output_dir: folder to save into (e.g. the game project's sprites folder). Inside a Godot
+           project the .tres gets the right res:// path; for Unity, save inside Assets/.
+           Default: LPC_OUTPUT_DIR or ~/lpc-characters.
 
-    items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
-           Inclua um corpo (body/body) e uma cabeça (ex.: head/heads/human/heads_human_male).
-           Itens de pele (cabeça, orelhas, nariz...) sem cor herdam a cor do corpo.
-           Itens com várias partes (ver `color_parts` em get_item) aceitam uma lista de cores.
+    items: list of {"id": "<item id>", "color": "<color>" | ["<color 1>", "<color 2>"], "variant": "<variant>"}.
+           Include a body (body/body) and a head (e.g. head/heads/human/heads_human_male).
+           Skin items (head, ears, nose...) without a color inherit the body color.
+           Multi-part items (see `color_parts` in get_item) accept a list of colors.
     body_type: male | female | muscular | pregnant | teen | child
-    animations: subconjunto de walk, idle, slash, thrust, spellcast, shoot, hurt, run, jump... (padrão: todas).
-           Animações especiais de armas/ferramentas (ex.: slash_128, tool_hammer) entram
-           automaticamente quando a animação base delas (slash, thrust...) é pedida.
-    layout: "standard" = mesmo layout do site (832px de largura, cada animação sempre na
-           mesma posição; animações especiais vêm abaixo, a partir de y=3456). É o formato
-           que importadores de Godot/Unity/RPG Maker esperam.
-           "compact" = só as animações pedidas, empilhadas.
-    split: também salva em partes. True ou "animation" = um PNG por animação (<nome>_anims/);
-           "frame" = um PNG por quadro (<nome>_frames/<animação>/<direção>_NN.png);
-           "item" = uma folha por item (<nome>_items/), para trocar roupas no jogo.
-           Pode ser uma lista: ["animation", "frame"].
-    export: arquivos prontos para engines: "godot" (SpriteFrames .tres), "unity" (.meta com os
-           sprites fatiados + clipes .anim), "web" (atlas JSON para Phaser/PixiJS + página de
-           demonstração), "site" (JSON para o botão "Import from Clipboard" do site).
-    Sempre salva <nome>_credits.txt e <nome>_credits.csv com autores e licenças das artes usadas.
+    animations: subset of walk, idle, slash, thrust, spellcast, shoot, hurt, run, jump... (default: all).
+           Oversized weapon/tool animations (e.g. slash_128, tool_hammer) are added automatically
+           when their base animation (slash, thrust...) is requested.
+    layout: "standard" = same layout as the site (832px wide, each animation always on the same
+           row; oversized animations below y=3456). It is what Godot/Unity/RPG Maker importers expect.
+           "compact" = only the requested animations, stacked.
+    split: also save pieces. True or "animation" = one PNG per animation (<name>_anims/);
+           "frame" = one PNG per frame (<name>_frames/<animation>/<direction>_NN.png);
+           "item" = one sheet per item (<name>_items/), for swapping outfits in-game.
+           Can be a list: ["animation", "frame"].
+    export: engine-ready files: "godot" (SpriteFrames .tres), "unity" (sliced sprites .meta,
+           .anim clips and an AnimatorController), "web" (JSON atlas for Phaser/PixiJS + demo page),
+           "site" (JSON for the generator site's "Import from Clipboard" button).
+    Always writes <name>_credits.txt and <name>_credits.csv with authors and licenses of the art used.
     """
     if layout not in ("standard", "compact"):
-        return {"error": "layout deve ser 'standard' ou 'compact'"}
+        return {"error": t("bad_layout")}
     if split is True:
         split_modes = ["animation"]
     elif not split:
@@ -173,10 +174,10 @@ def generate_character(items: list[dict], body_type: str = "male",
         split_modes = [split] if isinstance(split, str) else list(split)
     bad = set(split_modes) - {"animation", "item", "frame"}
     if bad:
-        return {"error": f"split inválido: {sorted(bad)}. Use animation, item e/ou frame."}
+        return {"error": t("bad_split", bad=sorted(bad))}
     bad = set(export or []) - set(EXPORTERS)
     if bad:
-        return {"error": f"export inválido: {sorted(bad)}. Use {sorted(EXPORTERS)}."}
+        return {"error": t("bad_export", bad=sorted(bad), valid=sorted(EXPORTERS))}
 
     replaced = []
     if prefer_complete:
@@ -251,18 +252,18 @@ def generate_character(items: list[dict], body_type: str = "male",
 
 @mcp.tool()
 def from_site_url(url: str) -> dict:
-    """Lê um link do gerador LPC (ex.: ...Character-Generator/#sex=male&body=Body_Color_light&...)
-    e devolve {body_type, items} prontos para generate_character.
-    Parâmetros que não foram reconhecidos aparecem em `unresolved`."""
+    """Reads a link from the LPC generator site (e.g. ...Character-Generator/#sex=male&body=Body_Color_light&...)
+    and returns {body_type, items} ready for generate_character (old links work too).
+    Unrecognized parameters are listed in `unresolved`."""
     return parse_url(url)
 
 
 @mcp.tool()
 def to_site_url(items: list[dict], body_type: str = "male") -> str:
-    """Monta o link do site com esses itens, para abrir e ajustar o personagem no navegador."""
+    """Builds a generator site link with these items, to open and tweak the character in a browser."""
     for it in items:
         if it["id"] not in ITEMS:
-            raise ValueError(f"item desconhecido: {it['id']}")
+            raise ValueError(t("unknown_item", id=it["id"]))
     return build_url(items, body_type)
 
 
@@ -356,10 +357,10 @@ def random_items(body_type="male", rng=None, fixed=None):
 @mcp.tool()
 def random_character(body_type: str = "male", seed: int | None = None,
                      fixed_items: list[dict] | None = None) -> dict:
-    """Sorteia um personagem (pele, cabeça, cabelo, roupa, calçado e às vezes barba,
-    chapéu, colete ou capa). Não gera a imagem: devolve {items, body_type, url} para
-    revisar e passar a generate_character. `fixed_items` entram em todos (ex.: uma arma).
-    Use `seed` para repetir o mesmo sorteio."""
+    """Rolls a random character (skin, head, hair, clothes, shoes and sometimes a beard, hat or
+    vest), using only items that have every animation. Does not render: returns
+    {items, body_type, url} to review and pass to generate_character. `fixed_items` are always
+    added (e.g. a weapon). Use `seed` to repeat the same roll."""
     items = random_items(body_type, random.Random(seed), fixed_items)
     return {"body_type": body_type, "items": items, "url": build_url(items, body_type)}
 
@@ -370,10 +371,10 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
                    animations: list[str] | None = None, layout: str = "standard",
                    split: bool = False, export: list[str] | None = None,
                    output_dir: str | None = None) -> dict:
-    """Gera vários personagens aleatórios de uma vez (ex.: aldeões para um vilarejo).
-    Salva <prefix>_01.png, <prefix>_02.png... e os créditos de cada um.
-    body_types: corpos sorteados entre esses (padrão: male e female).
-    fixed_items: itens que todos recebem (ex.: [{"id": "tools/tool_hammer"}])."""
+    """Generates many random characters at once (e.g. villagers for a town).
+    Saves <prefix>_01.png, <prefix>_02.png... and the credits for each.
+    body_types: bodies to pick from (default: male and female).
+    fixed_items: items everyone gets (e.g. [{"id": "tools/tool_hammer"}])."""
     rng = random.Random(seed)
     bodies = body_types or ["male", "female"]
     out = []
@@ -397,13 +398,13 @@ def _preview_frames(items, body_type, animation):
     special = animation in _custom_animations()
     base = _custom_base(animation) if special else animation
     if base not in ANIMATIONS:
-        raise ValueError(f"animação desconhecida: {animation}. Use uma de {ANIMATIONS} ou uma especial.")
+        raise ValueError(t("unknown_animation", anim=animation, valid=ANIMATIONS))
     comp = _compose(items, body_type, [base])
     if "error" in comp:
         raise ValueError(comp["error"])
     rows = {a: (img, f) for a, img, f in comp["rows"]}
     if animation not in rows:
-        raise ValueError(f"a animação '{animation}' não existe para esses itens: {list(rows)}")
+        raise ValueError(t("animation_not_available", anim=animation, available=list(rows)))
     img, f = rows[animation]
     info = _row_info(animation, img, f, 0)
     clips = exporters.frames_of(img, {animation: info})
@@ -429,10 +430,10 @@ def _preview_frames(items, body_type, animation):
 @mcp.tool()
 def preview_character(items: list[dict], body_type: str = "male", animation: str = "walk",
                       animated: bool = True):
-    """Mostra o personagem direto no chat, sem salvar arquivos: as 4 direções lado a lado.
-    animated=True (padrão) devolve um GIF animado tocando a animação; False, uma imagem parada.
-    animation: walk, idle, slash, run... ou uma especial (tool_hammer, slash_128, walk_128...).
-    Use para conferir o visual antes de generate_character."""
+    """Shows the character in the chat without saving files: the 4 directions side by side.
+    animated=True (default) returns an animated GIF of the animation; False, a still image.
+    animation: walk, idle, slash, run... or an oversized one (tool_hammer, slash_128, walk_128...).
+    Use it to check the look before generate_character."""
     try:
         frames, fps, note = _preview_frames(items, body_type, animation)
     except ValueError as e:
@@ -460,9 +461,9 @@ def _cache_images():
 
 @mcp.tool()
 def clear_cache(older_than_days: int = 0, dry_run: bool = False) -> dict:
-    """Apaga as imagens baixadas em cache (elas são baixadas de novo quando precisar).
-    older_than_days: só apaga as que não são usadas há mais de N dias (0 = todas).
-    dry_run: só mostra quanto seria liberado, sem apagar."""
+    """Deletes cached images (they are downloaded again when needed).
+    older_than_days: only delete images unused for more than N days (0 = all).
+    dry_run: only report how much would be freed, without deleting."""
     import time
     limit = time.time() - older_than_days * 86400
     files = [p for p in _cache_images() if not older_than_days or p.stat().st_atime < limit]
@@ -481,9 +482,8 @@ def clear_cache(older_than_days: int = 0, dry_run: bool = False) -> dict:
 # ---------- atualização ----------
 @mcp.tool()
 def update_definitions(clear_image_cache: bool = False) -> dict:
-    """Atualiza os itens e paletas a partir do repositório oficial do gerador LPC
-    (novos itens, correções). clear_image_cache=True também apaga os PNGs baixados,
-    para que sejam baixados de novo na versão nova."""
+    """Pulls new items and palettes from the official LPC generator repository.
+    clear_image_cache=True also deletes downloaded PNGs so they are fetched again."""
     import shutil
     import subprocess
     run = lambda *a: subprocess.run(a, cwd=REPO, check=True, capture_output=True,
@@ -511,7 +511,7 @@ def _export_site(path, img, index, items, body_type, missing=None):
     out.write_text(json.dumps({"version": 1, "url": build_url(items, body_type)}, indent=2),
                    encoding="utf8")
     return {"file": str(out), "url": build_url(items, body_type),
-            "how_to_use": "No site, copie o conteúdo do arquivo e clique em Import from Clipboard (JSON)."}
+            "how_to_use": t("site_how")}
 
 
 EXPORTERS = {

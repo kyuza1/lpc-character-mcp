@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from .i18n import t
 from .catalog import (ANIMATIONS, BODY_TYPES, CACHE, INTENTIONAL_GAPS, ITEMS, RAW, REPO, _base_colors, _color_list, _colors_for, _fill_path, _hex, _recolor_entries, _sprite_files, is_equipment)
 
 # Layout padrão do site (spritesheet "universal"): linha inicial de cada animação
@@ -212,17 +213,17 @@ def _compose(items, body_type, animations=None, inherit_from=None):
     _used_files.clear()
     for it in items:
         if it["id"] not in ITEMS:
-            return {"error": f"item desconhecido: {it['id']}"}
+            return {"error": t("unknown_item", id=it["id"])}
     if body_type not in BODY_TYPES:
-        return {"error": f"body_type deve ser um de {BODY_TYPES}"}
+        return {"error": t("bad_body", bodies=BODY_TYPES)}
 
     # um item por tipo, como no site: o último pedido vence
     warnings, by_type = [], {}
     for it in items:
-        t = ITEMS[it["id"]].get("type_name")
-        if t in by_type and by_type[t]["id"] != it["id"]:
-            warnings.append(f"{it['id']} substituiu {by_type[t]['id']} (mesmo tipo: {t})")
-        by_type[t] = it
+        tn = ITEMS[it["id"]].get("type_name")
+        if tn in by_type and by_type[tn]["id"] != it["id"]:
+            warnings.append(t("replaced_same_type", new=it["id"], old=by_type[tn]["id"], type=tn))
+        by_type[tn] = it
     items = [it for it in items if by_type.get(ITEMS[it["id"]].get("type_name")) is it]
 
     # cor da pele: itens com match_body_color sem cor herdam a cor do corpo
@@ -244,7 +245,7 @@ def _compose(items, body_type, animations=None, inherit_from=None):
                 path = _fill_path(d, v[body_type], names)
                 if path is None:
                     need = ", ".join(sorted(d.get("replace_in_path", {})))
-                    msg = f"{it['id']} não combina com o {need} escolhido e foi ignorado"
+                    msg = t("template_mismatch", id=it["id"], need=need)
                     if msg not in warnings:
                         warnings.append(msg)
                     continue
@@ -304,7 +305,7 @@ def _compose(items, body_type, animations=None, inherit_from=None):
             rows.append((name, sheet, _custom_animations()[name]["frameSize"]))
 
     if not rows:
-        return {"error": "nenhuma camada encontrada para essa combinação"}
+        return {"error": t("no_layers")}
     # mesmo critério do animation_check: equipamentos (armas, ferramentas) e faltas
     # intencionais (ex.: barba ao escalar, de costas) não são aviso
     for item_id, lacking in list(missing.items()):
@@ -390,15 +391,14 @@ def _write_credits(credits, base):
     for c in credits:
         block = [c.get("file", "")]
         if c.get("notes"):
-            block.append(f"  Notas: {c['notes']}")
-        block.append(f"  Autores: {', '.join(c.get('authors', []))}")
-        block.append(f"  Licenças: {', '.join(c.get('licenses', []))}")
+            block.append(f"  {t('credits_notes')}: {c['notes']}")
+        block.append(f"  {t('credits_authors')}: {', '.join(c.get('authors', []))}")
+        block.append(f"  {t('credits_licenses')}: {', '.join(c.get('licenses', []))}")
         block += [f"  {u}" for u in c.get("urls", [])]
         txt.append("\n".join(block))
         rows.append([c.get("file", ""), c.get("notes", ""), ", ".join(c.get("authors", [])),
                      ", ".join(c.get("licenses", [])), " ".join(c.get("urls", []))])
-    head = ("Artes do Universal LPC Spritesheet Character Generator.\n"
-            "Ao usar estas imagens, dê crédito aos autores abaixo conforme as licenças.\n\n")
+    head = t("credits_header")
     Path(f"{base}_credits.txt").write_text(head + "\n\n".join(txt) + "\n", encoding="utf8")
     with open(f"{base}_credits.csv", "w", newline="", encoding="utf8") as f:
         csv.writer(f).writerows(rows)

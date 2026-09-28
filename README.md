@@ -33,7 +33,8 @@ To run the latest code straight from GitHub, replace `uvx lpc-character-mcp` wit
 
 Characters are saved to `~/lpc-characters` (on Windows, `C:\Users\<you>\lpc-characters`).
 Set `LPC_OUTPUT_DIR` to change it — for example, to your Godot/Unity sprites folder.
-`lpc-character-mcp --where` prints every folder in use.
+`lpc-character-mcp --where` prints every folder in use. Messages are in English; set
+`LPC_LANG=pt` for Portuguese.
 
 ### Claude Code
 ```
@@ -206,7 +207,6 @@ licenses and links for **only the art that was used**. The sprites are LPC art
   `shoot` or `climb`); `animation_check` reports them in `body_missing`.
 - Godot 3 is not supported (Godot 4 only). Unity was tested on Unity 6.
 - Runs locally (stdio); it does not work with clients that only accept remote servers.
-- Tool messages and warnings are in Portuguese.
 
 ## Development
 ```

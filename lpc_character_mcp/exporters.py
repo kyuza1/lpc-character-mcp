@@ -5,7 +5,10 @@ animações devolvido por generate_character — e salvam os arquivos ao lado do
 """
 import hashlib
 import json
+import re
 import time
+
+from .i18n import t
 from pathlib import Path
 
 # animações que repetem em loop (as outras tocam uma vez)
@@ -71,12 +74,10 @@ def godot(path, img, index, res_dir=None):
             + f'\n[resource]\nanimations = [{", ".join(anims)}]\n')
     out = path.with_suffix(".tres")
     out.write_text(text, encoding="utf8")
-    use = (f"Já está no projeto: use {res_dir}{out.name} em Sprite Frames de um AnimatedSprite2D"
-           if in_project else
-           f"Copie {path.name} e {out.name} para {res_dir} no projeto Godot 4 e use o .tres em "
-           f"Sprite Frames de um AnimatedSprite2D")
+    use = (t("godot_in_project", res=f"{res_dir}{out.name}") if in_project else
+           t("godot_copy", png=path.name, tres=out.name, res_dir=res_dir))
     return {"file": str(out), "res_path": f"{res_dir}{out.name}", "animations": len(clips),
-            "how_to_use": use + " (animações: walk_down, walk_up, idle_left...)."}
+            "how_to_use": use + t("godot_anims")}
 
 
 # ---------- Unity ----------
@@ -303,10 +304,7 @@ AnimationClip:
     controller = _unity_controller(path, [c[0] for c in clips])
     return {"meta": f"{path}.meta", "anims_folder": str(folder), "clips": len(clips),
             "controller": str(controller),
-            "how_to_use": f"Copie {path.name}, {path.name}.meta, {controller.name}(.meta) e a pasta "
-                          f"{folder.name} para Assets/ no Unity (ou gere com output_dir dentro de "
-                          f"Assets/). Coloque o {controller.name} no Animator de um objeto com "
-                          f"SpriteRenderer e troque a animação com animator.Play(\"walk_left\")."}
+            "how_to_use": t("unity_how", png=path.name, ctrl=controller.name, folder=folder.name)}
 
 
 def _native_meta(guid, main_id):
@@ -435,9 +433,7 @@ def web(path, img, index, missing=None):
             .replace("__TITLE__", path.stem).replace("__ATLAS_FILE__", atlas_file.name)
             .replace("__IMAGE__", path.name).replace("__VERSION__", str(int(time.time())))
             .replace("__ATLAS__", json.dumps(atlas)))
+    page = re.sub(r"__T:(\w+)__", lambda m: t("demo_" + m.group(1)), page)
     html.write_text(page, encoding="utf8")
     return {"atlas": str(atlas_file), "demo": str(html),
-            "how_to_use": "Phaser 3: this.load.atlas('char', '" + path.name + "', '" + atlas_file.name
-                          + "') e crie as animações a partir de atlas.animations. PixiJS: "
-                          "Assets.load('" + atlas_file.name + "') e use sheet.animations['walk_down'] "
-                          "num AnimatedSprite. Abra " + html.name + " no navegador para ver."}
+            "how_to_use": t("web_how", png=path.name, json=atlas_file.name, html=html.name)}

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="__T:html_lang__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__TITLE__ · Personagem LPC</title>
+<title>__TITLE__ · __T:title__</title>
 <style>
   :root {
     --bg: #f4f1ea; --panel: #fffdf8; --ink: #23201b; --muted: #6f685d; --line: #ddd6c8;
@@ -53,28 +53,27 @@
   </header>
 
   <div class="stage">
-    <canvas id="c" width="256" height="256" aria-label="Personagem animado"></canvas>
+    <canvas id="c" width="256" height="256" aria-label="__T:canvas_label__"></canvas>
     <p class="msg" id="msg" hidden></p>
   </div>
 
-  <section class="controls" aria-label="Controles">
+  <section class="controls" aria-label="__T:controls_label__">
     <div class="row">
-      <span>Animação</span>
+      <span>__T:animation__</span>
       <select id="anim"></select>
     </div>
     <div class="row">
-      <span>Direção</span>
+      <span>__T:direction__</span>
       <div class="dirs" id="dirs">
-        <button data-dir="up" title="Cima">↑</button>
-        <button data-dir="left" title="Esquerda">←</button>
-        <button data-dir="down" title="Baixo">↓</button>
-        <button data-dir="right" title="Direita">→</button>
+        <button data-dir="up" title="__T:up__">↑</button>
+        <button data-dir="left" title="__T:left__">←</button>
+        <button data-dir="down" title="__T:down__">↓</button>
+        <button data-dir="right" title="__T:right__">→</button>
       </div>
-      <button id="play" title="Pausar / continuar">⏸</button>
+      <button id="play" title="__T:pause__">⏸</button>
       <span class="frame" id="frame"></span>
     </div>
-    <p class="keys">Jogar: <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> ou <kbd>WASD</kbd> anda ·
-      <kbd>Shift</kbd> corre · <kbd>Espaço</kbd> ataca</p>
+    <p class="keys">__T:keys__</p>
   </section>
 </main>
 
@@ -172,8 +171,8 @@ function draw(t) {
     frameLabel.textContent = `${name} · ${frame + 1}/${frames.length}`;
     if (!msg.classList.contains("error")) {
       const lacking = (atlas.meta.missing || {})[base];
-      show(blank.has(frames[frame]) ? "Nenhuma arte nesta animação/direção."
-           : lacking ? `Sem arte nesta animação: ${lacking.join(", ")}.` : "");
+      show(blank.has(frames[frame]) ? "__T:no_art__"
+           : lacking ? "__T:lacking__".replace("%s", lacking.join(", ")) : "");
     }
   }
   requestAnimationFrame(draw);
@@ -183,16 +182,16 @@ const blank = new Set();
 const img = new Image();
 img.onload = () => {
   if (img.naturalWidth !== atlas.meta.size.w || img.naturalHeight !== atlas.meta.size.h) {
-    show(`A imagem tem ${img.naturalWidth}×${img.naturalHeight}, mas o atlas espera ` +
-         `${atlas.meta.size.w}×${atlas.meta.size.h}. Gere de novo a imagem e o atlas juntos.`, true);
+    show("__T:size_mismatch__"
+         .replace("%1", `${img.naturalWidth}×${img.naturalHeight}`)
+         .replace("%2", `${atlas.meta.size.w}×${atlas.meta.size.h}`), true);
   }
   try {  // aberto via file:// o navegador bloqueia a leitura de pixels; aí só pula esse aviso
     for (const [k, v] of Object.entries(atlas.frames)) if (isBlank(v.frame)) blank.add(k);
   } catch { blank.clear(); }
   ready = true; syncUI(); requestAnimationFrame(draw);
 };
-img.onerror = () => show("Não consegui carregar __IMAGE__. Deixe esta página na mesma pasta da imagem " +
-                         "e abra por um servidor local (ex.: python -m http.server).", true);
+img.onerror = () => show("__T:load_error__".replace("%s", "__IMAGE__"), true);
 img.src = "__IMAGE__?v=__VERSION__";  // evita imagem antiga em cache
 </script>
 </body>
