@@ -203,13 +203,14 @@ def generate_character(items: list[dict], body_type: str = "male",
                 layers.append((v.get("zPos", 0), n, d, v, it))
     layers.sort(key=lambda t: (t[0], t[1]))
 
-    rows = []
+    rows, missing = [], {}
     for anim in anims:
-        sheet = None
+        sheet, drawn = None, set()
         for _, _, d, layer, it in layers:
             img = _layer_image(d, layer, body_type, anim, it.get("variant"), [it.get("color")])
             if img is None:
                 continue
+            drawn.add(it["id"])
             if sheet is None:
                 sheet = Image.new("RGBA", img.size)
             if img.size != sheet.size:
@@ -219,6 +220,9 @@ def generate_character(items: list[dict], body_type: str = "male",
             sheet.alpha_composite(img, (0, 0))
         if sheet is not None:
             rows.append((anim, sheet))
+            for it in items:
+                if it["id"] not in drawn:
+                    missing.setdefault(it["id"], []).append(anim)
 
     if not rows:
         return {"error": "nenhuma camada encontrada para essa combinação"}
@@ -233,7 +237,11 @@ def generate_character(items: list[dict], body_type: str = "male",
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / filename
     final.save(path)
-    return {"file": str(path), "size": [w, h], "frame": 64, "animations": index}
+    result = {"file": str(path), "size": [w, h], "frame": 64, "animations": index}
+    if missing:
+        # item sem arte para esse corpo/animação: não aparece nessas linhas
+        result["missing"] = missing
+    return result
 
 
 if __name__ == "__main__":
