@@ -5,6 +5,7 @@ animações devolvido por generate_character — e salvam os arquivos ao lado do
 """
 import hashlib
 import json
+import time
 from pathlib import Path
 
 # animações que repetem em loop (as outras tocam uma vez)
@@ -310,73 +311,13 @@ def web(path, img, index):
     atlas_file = path.with_suffix(".json")
     atlas_file.write_text(json.dumps(atlas, indent=1), encoding="utf8")
     html = path.parent / f"{path.stem}_demo.html"
-    html.write_text(DEMO_HTML.replace("__IMAGE__", path.name)
-                    .replace("__ATLAS__", json.dumps(atlas)), encoding="utf8")
+    page = (Path(__file__).with_name("demo_template.html").read_text(encoding="utf8")
+            .replace("__TITLE__", path.stem).replace("__ATLAS_FILE__", atlas_file.name)
+            .replace("__IMAGE__", path.name).replace("__VERSION__", str(int(time.time())))
+            .replace("__ATLAS__", json.dumps(atlas)))
+    html.write_text(page, encoding="utf8")
     return {"atlas": str(atlas_file), "demo": str(html),
             "how_to_use": "Phaser 3: this.load.atlas('char', '" + path.name + "', '" + atlas_file.name
                           + "') e crie as animações a partir de atlas.animations. PixiJS: "
                           "Assets.load('" + atlas_file.name + "') e use sheet.animations['walk_down'] "
                           "num AnimatedSprite. Abra " + html.name + " no navegador para ver."}
-
-
-DEMO_HTML = """<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>Personagem LPC</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body{margin:0;font:14px system-ui,sans-serif;background:#1d2330;color:#e8ecf3;display:flex;
-       flex-direction:column;align-items:center;gap:12px;padding:16px}
-  canvas{image-rendering:pixelated;background:#2b3345;border-radius:8px;max-width:100%}
-  select{font:inherit;padding:4px 8px}
-  p{margin:0;opacity:.75}
-</style></head><body>
-<canvas id="c" width="384" height="384"></canvas>
-<label>Animação <select id="anim"></select></label>
-<p>Setas ou WASD para andar · Shift para correr · Espaço para atacar</p>
-<script>
-const atlas = __ATLAS__;
-const img = new Image(); img.src = "__IMAGE__";
-const cv = document.getElementById("c"), ctx = cv.getContext("2d"), sel = document.getElementById("anim");
-ctx.imageSmoothingEnabled = false;
-for (const n of Object.keys(atlas.animations)) sel.add(new Option(n, n));
-let clip = atlas.animations.walk_down ? "walk_down" : Object.keys(atlas.animations)[0];
-sel.value = clip; sel.onchange = () => { clip = sel.value; frame = 0; manual = true; };
-let frame = 0, last = 0, dir = "down", manual = false, x = 0, y = 0;
-const keys = new Set();
-addEventListener("keydown", e => { keys.add(e.key.toLowerCase()); manual = false; });
-addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
-const has = n => atlas.animations[n];
-function pick() {
-  if (manual) return clip;
-  const k = s => s.some(v => keys.has(v));
-  let moving = true;
-  if (k(["arrowup","w"])) dir = "up"; else if (k(["arrowdown","s"])) dir = "down";
-  else if (k(["arrowleft","a"])) dir = "left"; else if (k(["arrowright","d"])) dir = "right";
-  else moving = false;
-  // ataque: prefere a animação especial da arma/ferramenta (martelo, espada grande...)
-  const attack = ["tool_hammer","tool_axe","tool_rod","tool_whip","whip_oversize","slash_oversize",
-                  "slash_128","thrust_oversize","thrust_128","slash","thrust","shoot","spellcast"]
-    .map(a => a + "_" + dir).find(has);
-  if (keys.has(" ") && attack) return attack;
-  if (moving) {
-    const run = "run_" + dir, walk = has("walk_128_" + dir) ? "walk_128_" + dir : "walk_" + dir;
-    return keys.has("shift") && has(run) ? run : walk;
-  }
-  return has("idle_" + dir) ? "idle_" + dir : "walk_" + dir;
-}
-function loop(t) {
-  const want = pick();
-  if (want !== clip && has(want)) { clip = want; frame = 0; sel.value = clip; }
-  const frames = atlas.animations[clip], fps = atlas.meta.fps[clip] || 10;
-  if (t - last > 1000 / fps) {
-    last = t; frame++;
-    if (frame >= frames.length) frame = atlas.meta.loop[clip] ? 0 : frames.length - 1;
-  }
-  const f = atlas.frames[frames[frame]].frame;
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  const s = f.w > 64 ? 2 : 4;
-  ctx.drawImage(img, f.x, f.y, f.w, f.h, (cv.width - f.w * s) / 2, (cv.height - f.h * s) / 2, f.w * s, f.h * s);
-  requestAnimationFrame(loop);
-}
-img.onload = () => requestAnimationFrame(loop);
-</script></body></html>
-"""

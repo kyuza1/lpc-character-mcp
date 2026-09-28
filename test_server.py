@@ -384,3 +384,11 @@ def test_link_com_nomes_antigos():
                           {"id": "head/head_wrinkles", "color": "light"},
                           {"id": "legs/pants/legs_formal", "color": "black"}]
     assert "unresolved" not in r
+
+
+def test_demo_web_sem_marcadores_sobrando(tmp_path):
+    s.generate_character(FERREIRO, animations=["walk"], filename="dm.png", export=["web"])
+    html = (tmp_path / "dm_demo.html").read_text(encoding="utf8")
+    import re
+    assert not re.findall(r"__[A-Z_]+__", html)
+    assert 'img.src = "dm.png?v=' in html and "<title>dm · Personagem LPC</title>" in html

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ · Personagem LPC</title>
+<style>
+  :root {
+    --bg: #f4f1ea; --panel: #fffdf8; --ink: #23201b; --muted: #6f685d; --line: #ddd6c8;
+    --stage: #e9e3d6; --accent: #b4532a; --accent-ink: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17161a; --panel: #211f25; --ink: #ece8e1; --muted: #a39d93; --line: #37333b;
+            --stage: #2b2830; --accent: #e07a4a; --accent-ink: #1a1410; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 24px 16px 40px; display: grid; gap: 16px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 2px 0 0; font-size: 13px; }
+  .stage { position: relative; background: var(--stage); border: 1px solid var(--line);
+           border-radius: 12px; aspect-ratio: 1; display: grid; place-items: center; overflow: hidden; }
+  canvas { width: 100%; height: 100%; image-rendering: pixelated; }
+  .msg { position: absolute; inset: auto 12px 12px; padding: 8px 10px; border-radius: 8px;
+         background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted);
+         text-align: center; }
+  .msg[hidden] { display: none; }
+  .msg.error { color: var(--ink); border-color: var(--accent); }
+  .controls { display: grid; gap: 12px; background: var(--panel); border: 1px solid var(--line);
+              border-radius: 12px; padding: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row > span { width: 78px; color: var(--muted); font-size: 13px; }
+  select, button { font: inherit; color: var(--ink); background: var(--bg);
+                   border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  select { flex: 1; min-width: 0; }
+  button { cursor: pointer; min-width: 40px; }
+  button:disabled { opacity: .35; cursor: default; }
+  button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .dirs { display: flex; gap: 6px; }
+  .frame { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .keys { color: var(--muted); font-size: 13px; margin: 0; }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 4px; background: var(--panel); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>__TITLE__</h1>
+    <p class="sub">Spritesheet LPC · atlas <code>__ATLAS_FILE__</code></p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" width="256" height="256" aria-label="Personagem animado"></canvas>
+    <p class="msg" id="msg" hidden></p>
+  </div>
+
+  <section class="controls" aria-label="Controles">
+    <div class="row">
+      <span>Animação</span>
+      <select id="anim"></select>
+    </div>
+    <div class="row">
+      <span>Direção</span>
+      <div class="dirs" id="dirs">
+        <button data-dir="up" title="Cima">↑</button>
+        <button data-dir="left" title="Esquerda">←</button>
+        <button data-dir="down" title="Baixo">↓</button>
+        <button data-dir="right" title="Direita">→</button>
+      </div>
+      <button id="play" title="Pausar / continuar">⏸</button>
+      <span class="frame" id="frame"></span>
+    </div>
+    <p class="keys">Jogar: <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> ou <kbd>WASD</kbd> anda ·
+      <kbd>Shift</kbd> corre · <kbd>Espaço</kbd> ataca</p>
+  </section>
+</main>
+
+<script>
+const atlas = __ATLAS__;
+const DIRS = ["up", "left", "down", "right"];
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const sel = document.getElementById("anim"), msg = document.getElementById("msg");
+const frameLabel = document.getElementById("frame"), playBtn = document.getElementById("play");
+const dirButtons = [...document.querySelectorAll("#dirs button")];
+
+// "walk_down" -> base "walk", direção "down"; "hurt" -> base "hurt", sem direção
+const clips = {};
+for (const name of Object.keys(atlas.animations)) {
+  const m = name.match(/^(.*)_(up|left|down|right)$/);
+  const base = m ? m[1] : name, dir = m ? m[2] : null;
+  (clips[base] ??= {})[dir ?? "any"] = name;
+}
+for (const base of Object.keys(clips)) sel.add(new Option(base.replaceAll("_", " "), base));
+
+let base = clips.walk ? "walk" : Object.keys(clips)[0], dir = "down";
+let frame = 0, last = 0, playing = true, manual = false, ready = false;
+const keys = new Set();
+
+function clipName(b = base, d = dir) { const c = clips[b]; return c && (c[d] ?? c.any ?? Object.values(c)[0]); }
+function show(text, error = false) { msg.textContent = text; msg.hidden = !text; msg.classList.toggle("error", error); }
+
+function syncUI() {
+  sel.value = base;
+  for (const b of dirButtons) {
+    const has = Boolean(clips[base]?.[b.dataset.dir]);  // "hurt" etc. só têm uma direção
+    b.disabled = !has;
+    b.setAttribute("aria-pressed", String(has && b.dataset.dir === dir));
+  }
+}
+function setClip(b, d) {
+  if (b === base && d === dir) return;
+  base = b; dir = d; frame = 0; syncUI();
+}
+
+sel.addEventListener("change", () => { manual = true; setClip(sel.value, dir); sel.blur(); });
+for (const b of dirButtons) b.addEventListener("click", () => { manual = true; setClip(base, b.dataset.dir); });
+playBtn.addEventListener("click", () => { playing = !playing; playBtn.textContent = playing ? "⏸" : "▶"; });
+
+// teclado: não interfere quando a lista está focada; solta tudo ao trocar de janela
+const MOVE = { arrowup: "up", w: "up", arrowleft: "left", a: "left", arrowdown: "down", s: "down", arrowright: "right", d: "right" };
+addEventListener("keydown", e => {
+  if (e.target instanceof HTMLSelectElement) return;
+  const k = e.key.toLowerCase();
+  if (k in MOVE || k === " " || k === "shift") {
+    e.preventDefault(); keys.add(k); manual = false;
+  }
+});
+addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => keys.clear());
+
+const ATTACKS = ["tool_hammer", "tool_axe", "tool_rod", "tool_whip", "whip_oversize", "slash_oversize",
+                 "slash_128", "thrust_oversize", "thrust_128", "slash", "thrust", "shoot", "spellcast"];
+function fromKeys() {
+  let moving = false;
+  for (const k of keys) if (MOVE[k]) { dir = MOVE[k]; moving = true; }
+  if (keys.has(" ")) { const a = ATTACKS.find(a => clips[a]?.[dir]); if (a) return a; }
+  if (moving) {
+    if (keys.has("shift") && clips.run?.[dir]) return "run";
+    return clips.walk_128?.[dir] ? "walk_128" : "walk";
+  }
+  return clips.idle?.[dir] ? "idle" : "walk";
+}
+
+function isBlank(f) {
+  const t = document.createElement("canvas"); t.width = f.w; t.height = f.h;
+  const x = t.getContext("2d"); x.drawImage(img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+  const d = x.getImageData(0, 0, f.w, f.h).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
+  return true;
+}
+
+function draw(t) {
+  if (!manual) { const b = fromKeys(); if (b !== base) { base = b; frame = 0; } syncUI(); }
+  const name = clipName();
+  const frames = atlas.animations[name] || [];
+  const fps = atlas.meta.fps[name] || 10;
+  if (playing && t - last > 1000 / fps && frames.length) {
+    last = t; frame++;
+    if (frame >= frames.length) frame = atlas.meta.loop[name] ? 0 : frames.length - 1;
+  }
+  frame = Math.min(frame, Math.max(frames.length - 1, 0));
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (frames.length) {
+    const f = atlas.frames[frames[frame]].frame;
+    const scale = f.w > 64 ? cv.width / f.w : cv.width / 64 * 0.9;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, f.x, f.y, f.w, f.h,
+                  (cv.width - f.w * scale) / 2, (cv.height - f.h * scale) / 2, f.w * scale, f.h * scale);
+    frameLabel.textContent = `${name} · ${frame + 1}/${frames.length}`;
+    if (!msg.classList.contains("error")) show(blank.has(frames[frame]) ? "Este item não tem arte nesta animação/direção." : "");
+  }
+  requestAnimationFrame(draw);
+}
+
+const blank = new Set();
+const img = new Image();
+img.onload = () => {
+  if (img.naturalWidth !== atlas.meta.size.w || img.naturalHeight !== atlas.meta.size.h) {
+    show(`A imagem tem ${img.naturalWidth}×${img.naturalHeight}, mas o atlas espera ` +
+         `${atlas.meta.size.w}×${atlas.meta.size.h}. Gere de novo a imagem e o atlas juntos.`, true);
+  }
+  try {  // aberto via file:// o navegador bloqueia a leitura de pixels; aí só pula esse aviso
+    for (const [k, v] of Object.entries(atlas.frames)) if (isBlank(v.frame)) blank.add(k);
+  } catch { blank.clear(); }
+  ready = true; syncUI(); requestAnimationFrame(draw);
+};
+img.onerror = () => show("Não consegui carregar __IMAGE__. Deixe esta página na mesma pasta da imagem " +
+                         "e abra por um servidor local (ex.: python -m http.server).", true);
+img.src = "__IMAGE__?v=__VERSION__";  // evita imagem antiga em cache
+</script>
+</body>
+</html>

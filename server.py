@@ -1078,4 +1078,11 @@ EXPORTERS = {
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import sys
+    if "--setup" in sys.argv:
+        # só prepara (baixa as definições na importação e a lista de arquivos) e sai
+        _sprite_files()
+        _custom_animations()
+        print(f"lpc-mcp pronto: {len(ITEMS)} itens em {DEFS}")
+    else:
+        mcp.run()
