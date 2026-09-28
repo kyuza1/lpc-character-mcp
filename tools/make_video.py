@@ -6,6 +6,7 @@
 output/promo.mp4       1280x720 video: ask -> result -> engines -> showcase -> install
 output/promo_pt.mp4    the same in Portuguese
 docs/install.gif       the install in a terminal (cmd); docs/install_pt.gif in Portuguese
+docs/chat.gif          asking the AI for a character and getting it; docs/chat_pt.gif in Portuguese
 docs/media_credits.*   authors and licenses of every sprite shown in the media
 
 The terminal text is the real output of a fresh install (paths shortened to the defaults).
@@ -435,7 +436,7 @@ def scene_chat(a, t, dur):
     ts = t - typed_end - 0.3
     y = box[1] + 20
     # user bubble (right)
-    lines = wrap(PROMPT_TEXT, f, 640)
+    lines = wrap(PROMPT_TEXT, f, 800)
     bw = max(int(f.getlength(ln)) for ln in lines) + 36
     bx = box[2] - 24 - bw
     rounded(d, (bx, y, box[2] - 24, y + 22 + 30 * len(lines)), 16, (48, 70, 120))
@@ -604,6 +605,18 @@ def make_gif(path, gw=960, gh=520, fps=12):
                    optimize=True)
 
 
+def make_chat_gif(a, path, fps=12, until=14.0, width=880):
+    """The chat scene (asking -> preview -> result) without the step caption."""
+    shots = []
+    for i in range(int(until * fps)):
+        img = scene_chat(a, i / fps, 99).crop((40, 114, W - 40, H - 22))
+        shots.append(img.resize((width, img.height * width // img.width), Image.LANCZOS))
+    palette = shots[-1].quantize(96)
+    frames = [s.quantize(palette=palette, dither=Image.Dither.NONE) for s in shots]
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0,
+                   optimize=True)
+
+
 if __name__ == "__main__":
     DOCS.mkdir(exist_ok=True)
     assets = None if "--gif" in sys.argv else load_assets()
@@ -615,6 +628,9 @@ if __name__ == "__main__":
         make_gif(gif)
         print(gif.name, gif.stat().st_size // 1024, "KB")
         if assets:
+            chat = DOCS / f"chat{suffix}.gif"
+            make_chat_gif(assets, chat)
+            print(chat.name, chat.stat().st_size // 1024, "KB")
             video = OUT / f"promo{suffix}.mp4"
             make_video(assets, video)
             print(video.name, video.stat().st_size // 1024, "KB")

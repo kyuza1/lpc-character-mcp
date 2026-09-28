@@ -11,6 +11,8 @@ e exporta prontos para **Godot**, **Unity** e **Web** (Phaser/PixiJS).
 Peça em linguagem natural ("gera um ferreiro moreno com avental e martelo") e o
 assistente monta o personagem, mostra uma prévia animada no chat e salva os arquivos.
 
+![Pedindo um ferreiro para a IA: prévia animada e arquivos no chat](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/chat_pt.gif)
+
 ![48 personagens gerados pelo MCP](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/showcase.png)
 
 *Todos os personagens acima foram gerados por este MCP — temáticos (cavaleiro, viking, mago,
