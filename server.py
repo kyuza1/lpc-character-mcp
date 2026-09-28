@@ -128,7 +128,7 @@ def _layer_image(d, layer, body, anim, variant, colors):
     if not path or layer.get("custom_animation") or layer.get("is_mask"):
         return None
     if d.get("variants"):
-        v = variant or d["variants"][0]
+        v = variant or (colors[0] if colors and colors[0] in d["variants"] else d["variants"][0])
         return _fetch(f"{path}{anim}/{v}.png")
     img = _fetch(f"{path}{anim}.png")
     if img is None:
