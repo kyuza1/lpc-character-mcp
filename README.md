@@ -60,9 +60,20 @@ Exemplo de `items`:
 ]
 ```
 
-A imagem sai em `output/` (ou em `LPC_OUTPUT_DIR`), com cada animação empilhada
-verticalmente (4 linhas: cima, esquerda, baixo, direita). O resultado diz a posição
-`y` e o tamanho do quadro (`frame`) de cada animação.
+A imagem sai em `output/` (ou em `LPC_OUTPUT_DIR`). O resultado diz a posição `y`
+e o tamanho do quadro (`frame`) de cada animação.
+
+### Layout
+- `layout: "standard"` (padrão) — igual ao site: 832px de largura, cada animação
+  sempre na mesma linha (walk em y=512, slash em y=768...). É o formato que
+  importadores de Godot/Unity/RPG Maker esperam. Animações especiais (128/192px)
+  vêm abaixo, a partir de y=3456.
+- `layout: "compact"` — só as animações pedidas, empilhadas.
+- `split: true` — também salva cada animação num PNG separado em `<nome>_anims/`.
+
+### Créditos
+Cada geração salva `<nome>_credits.txt` e `<nome>_credits.csv` com os autores,
+licenças e links **só das artes usadas**. Inclua isso no seu jogo.
 
 ### Cores
 - `"color": "blonde"` — uma cor (veja `colors` em `get_item`).

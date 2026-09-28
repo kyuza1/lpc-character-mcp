@@ -3,6 +3,7 @@
 Lê as definições JSON do repositório clonado em ./lpc e baixa os PNGs sob demanda
 do GitHub (com cache local em ./cache).
 """
+import csv
 import io
 import json
 import os
@@ -26,6 +27,12 @@ BODY_TYPES = ["male", "female", "muscular", "pregnant", "teen", "child"]
 # Ordem padrão da spritesheet ULPC (cada linha = 64px por direção)
 ANIMATIONS = ["spellcast", "thrust", "walk", "slash", "shoot", "hurt", "climb", "idle",
               "jump", "sit", "emote", "run", "combat_idle", "backslash", "halfslash"]
+
+# Layout padrão do site (spritesheet "universal"): linha inicial de cada animação
+STANDARD_ROWS = {"spellcast": 0, "thrust": 4, "walk": 8, "slash": 12, "shoot": 16, "hurt": 20,
+                 "climb": 21, "idle": 22, "jump": 26, "sit": 30, "emote": 34, "run": 38,
+                 "combat_idle": 42, "backslash": 46, "halfslash": 50}
+SHEET_WIDTH, SHEET_HEIGHT = 832, 3456  # 13 x 54 quadros de 64px
 
 mcp = MCPServer("lpc-character-generator")
 
@@ -113,18 +120,21 @@ def _hex(h):
 
 
 # ---------- imagens ----------
+_used_files = set()  # PNGs usados na geração atual (para os créditos)
+
+
 def _fetch(rel):
     local = CACHE / rel
-    if local.exists():
-        return Image.open(local).convert("RGBA") if local.stat().st_size else None
-    local.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        data = urllib.request.urlopen(RAW + rel, timeout=30).read()
-    except Exception:
-        local.write_bytes(b"")  # marca como inexistente
+    if not local.exists():
+        local.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            local.write_bytes(urllib.request.urlopen(RAW + rel, timeout=30).read())
+        except Exception:
+            local.write_bytes(b"")  # marca como inexistente
+    if not local.stat().st_size:
         return None
-    local.write_bytes(data)
-    return Image.open(io.BytesIO(data)).convert("RGBA")
+    _used_files.add(rel)
+    return Image.open(local).convert("RGBA")
 
 
 def _color_list(it):
@@ -300,7 +310,8 @@ def get_item(item_id: str) -> dict:
 
 @mcp.tool()
 def generate_character(items: list[dict], body_type: str = "male",
-                       animations: list[str] | None = None, filename: str = "character.png") -> dict:
+                       animations: list[str] | None = None, filename: str = "character.png",
+                       layout: str = "standard", split: bool = False) -> dict:
     """Gera a spritesheet do personagem e salva em PNG.
 
     items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
@@ -311,8 +322,17 @@ def generate_character(items: list[dict], body_type: str = "male",
     animations: subconjunto de walk, idle, slash, thrust, spellcast, shoot, hurt, run, jump... (padrão: todas).
            Animações especiais de armas/ferramentas (ex.: slash_128, tool_hammer) entram
            automaticamente quando a animação base delas (slash, thrust...) é pedida.
+    layout: "standard" = mesmo layout do site (832px de largura, cada animação sempre na
+           mesma posição; animações especiais vêm abaixo, a partir de y=3456). É o formato
+           que importadores de Godot/Unity/RPG Maker esperam.
+           "compact" = só as animações pedidas, empilhadas.
+    split: também salva cada animação num PNG separado (pasta <nome>_anims/).
+    Sempre salva <nome>_credits.txt e <nome>_credits.csv com autores e licenças das artes usadas.
     """
     anims = animations or ANIMATIONS
+    if layout not in ("standard", "compact"):
+        return {"error": "layout deve ser 'standard' ou 'compact'"}
+    _used_files.clear()
     for it in items:
         if it["id"] not in ITEMS:
             return {"error": f"item desconhecido: {it['id']}"}
@@ -372,22 +392,84 @@ def generate_character(items: list[dict], body_type: str = "male",
 
     if not rows:
         return {"error": "nenhuma camada encontrada para essa combinação"}
-    w = max(s.width for _, s, _ in rows)
-    h = sum(s.height for _, s, _ in rows)
-    final = Image.new("RGBA", (w, h))
-    y, index = 0, {}
-    for anim, s, frame in rows:
-        final.paste(s, (0, y))
-        index[anim] = {"y": y, "height": s.height, "frame": frame}
-        y += s.height
+
+    index = {}
+    if layout == "standard":
+        custom_h = sum(s.height for a, s, _ in rows if a not in STANDARD_ROWS)
+        w = max([SHEET_WIDTH] + [s.width for _, s, _ in rows])
+        final = Image.new("RGBA", (w, SHEET_HEIGHT + custom_h))
+        y = SHEET_HEIGHT
+        for anim, s, frame in rows:
+            if anim in STANDARD_ROWS:
+                pos = STANDARD_ROWS[anim] * 64
+            else:
+                pos, y = y, y + s.height
+            final.paste(s, (0, pos))
+            index[anim] = {"y": pos, "height": s.height, "frame": frame}
+    else:
+        final = Image.new("RGBA", (max(s.width for _, s, _ in rows), sum(s.height for _, s, _ in rows)))
+        y = 0
+        for anim, s, frame in rows:
+            final.paste(s, (0, y))
+            index[anim] = {"y": y, "height": s.height, "frame": frame}
+            y += s.height
+
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / filename
     final.save(path)
-    result = {"file": str(path), "size": [w, h], "frame": 64, "animations": index}
+    result = {"file": str(path), "size": list(final.size), "frame": 64, "layout": layout,
+              "animations": index}
+
+    if split:
+        folder = OUT / f"{path.stem}_anims"
+        folder.mkdir(exist_ok=True)
+        for anim, s, _ in rows:
+            s.save(folder / f"{anim}.png")
+        result["split_folder"] = str(folder)
+
+    credits = _credits(items)
+    result["credits"] = _write_credits(credits, OUT / path.stem)
     if missing:
         # item sem arte para esse corpo/animação: não aparece nessas linhas
         result["missing"] = missing
     return result
+
+
+def _credits(items):
+    """Entradas de crédito dos itens usados, só das pastas cujos PNGs entraram na imagem."""
+    out, seen = [], set()
+    for it in items:
+        for c in ITEMS[it["id"]].get("credits", []):
+            prefix = c.get("file", "").rstrip("/") + "/"
+            used = any(f.startswith(prefix) or f.startswith(prefix[:-1] + ".") for f in _used_files)
+            key = c.get("file")
+            if used and key not in seen:
+                seen.add(key)
+                out.append(c)
+    return out
+
+
+def _write_credits(credits, base):
+    txt, rows = [], [["file", "notes", "authors", "licenses", "urls"]]
+    for c in credits:
+        block = [c.get("file", "")]
+        if c.get("notes"):
+            block.append(f"  Notas: {c['notes']}")
+        block.append(f"  Autores: {', '.join(c.get('authors', []))}")
+        block.append(f"  Licenças: {', '.join(c.get('licenses', []))}")
+        block += [f"  {u}" for u in c.get("urls", [])]
+        txt.append("\n".join(block))
+        rows.append([c.get("file", ""), c.get("notes", ""), ", ".join(c.get("authors", [])),
+                     ", ".join(c.get("licenses", [])), " ".join(c.get("urls", []))])
+    head = ("Artes do Universal LPC Spritesheet Character Generator.\n"
+            "Ao usar estas imagens, dê crédito aos autores abaixo conforme as licenças.\n\n")
+    Path(f"{base}_credits.txt").write_text(head + "\n\n".join(txt) + "\n", encoding="utf8")
+    with open(f"{base}_credits.csv", "w", newline="", encoding="utf8") as f:
+        csv.writer(f).writerows(rows)
+    authors = sorted({a for c in credits for a in c.get("authors", [])})
+    licenses = sorted({l for c in credits for l in c.get("licenses", [])})
+    return {"file": f"{base}_credits.txt", "csv": f"{base}_credits.csv",
+            "authors": authors, "licenses": licenses}
 
 
 def _custom_base(name):

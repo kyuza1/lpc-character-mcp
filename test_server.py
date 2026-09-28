@@ -64,7 +64,8 @@ def test_color_escolhe_variante():
 
 def test_gera_elfa_completa():
     r = s.generate_character(ELFA, body_type="female",
-                             animations=["walk", "idle", "shoot"], filename="elfa.png")
+                             animations=["walk", "idle", "shoot"], filename="elfa.png",
+                             layout="compact")
     img = Image.open(r["file"])
     assert img.size == tuple(r["size"])
     assert {"walk", "idle", "shoot"} <= set(r["animations"])
@@ -138,3 +139,40 @@ def test_animacoes_especiais_lidas_do_repositorio():
     assert anims["tool_hammer"]["single"] and anims["tool_hammer"]["frameSize"] == 128
     assert len(anims["slash_128"]["frames"]) == 4
     assert anims["slash_128"]["frames"][0][0] == "slash-n,0"
+
+
+def test_layout_padrao_igual_ao_site():
+    r = s.generate_character(FERREIRO, animations=["walk", "slash"], filename="p.png")
+    assert r["layout"] == "standard"
+    a = r["animations"]
+    assert a["walk"]["y"] == 8 * 64 and a["slash"]["y"] == 12 * 64
+    assert a["tool_hammer"]["y"] == s.SHEET_HEIGHT
+    assert r["size"] == [9 * 128, s.SHEET_HEIGHT + 4 * 128]
+
+
+def test_layout_padrao_sem_especiais_tem_tamanho_do_site():
+    r = s.generate_character(FERREIRO[:2], filename="p2.png")
+    assert r["size"] == [s.SHEET_WIDTH, s.SHEET_HEIGHT]
+
+
+def test_layout_invalido():
+    assert "error" in s.generate_character(FERREIRO, layout="xyz")
+
+
+def test_split_salva_animacoes_separadas(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk", "slash"], filename="sp.png", split=True)
+    nomes = {p.name for p in (tmp_path / "sp_anims").iterdir()}
+    assert nomes == {"walk.png", "slash.png", "tool_hammer.png"}
+    assert Image.open(tmp_path / "sp_anims" / "tool_hammer.png").size == (9 * 128, 4 * 128)
+
+
+def test_creditos_so_das_artes_usadas(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="cr.png")
+    c = r["credits"]
+    txt = (tmp_path / "cr_credits.txt").read_text(encoding="utf8")
+    assert "body/bodies/male" in txt and "tools/hammer" in txt
+    assert "Stephen Challener (Redshrike)" in c["authors"]
+    assert "CC-BY-SA 3.0" in c["licenses"]
+    assert (tmp_path / "cr_credits.csv").read_text(encoding="utf8").startswith("file,notes,authors")
+    # item não usado não entra
+    assert "hair/" not in txt
