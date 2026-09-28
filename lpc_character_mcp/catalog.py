@@ -320,3 +320,67 @@ def reload():
     ITEMS.update(_load_items())
     _FILES = _SPRITE_DIRS = None
     item_animations.cache_clear()
+
+
+# ---------- licenças ----------
+LICENSE_FAMILIES = ["CC0", "CC-BY", "CC-BY-SA", "OGA-BY", "GPL"]
+# lojas com DRM (Steam, App Store...): só estas famílias permitem proteger o jogo
+DRM_SAFE = {"CC0", "OGA-BY"}
+# famílias que obrigam a distribuir derivados sob a mesma licença
+SHARE_ALIKE = {"CC-BY-SA", "GPL", "OGA-SA"}
+
+
+def license_family(name):
+    """'OGA-BY 3.0+' / 'OGA-BY-3.0' -> 'OGA-BY'; 'CC-BY-SA 4.0' -> 'CC-BY-SA'."""
+    n = name.strip().upper()
+    for fam in ("CC0", "CC-BY-SA", "CC-BY", "OGA-BY", "OGA-SA", "GPL"):
+        if n.startswith(fam):
+            return fam
+    return name.strip()
+
+
+def credit_options(credit):
+    """Famílias de licença que uma entrada de crédito oferece (pode escolher qualquer uma)."""
+    return {license_family(l) for l in credit.get("licenses", [])}
+
+
+def _item_credits(item_id, body=None):
+    """Créditos do item; com `body`, só os das pastas usadas por esse corpo."""
+    d = ITEMS[item_id]
+    credits = [c for c in d.get("credits", []) if c.get("licenses")]
+    if not body:
+        return credits
+    paths = [v[body] for k, v in d.items() if k.startswith("layer_") and v.get(body)]
+    paths = [p for raw in paths for p in _template_options(d, raw)]
+
+    def used(c):
+        f = c.get("file", "").rstrip("/")
+        return any(p.startswith(f) or f.startswith(p.rstrip("/")) for p in paths)
+    return [c for c in credits if used(c)] or credits
+
+
+def item_license_ok(item_id, allowed, body=None):
+    """O item pode ser usado só com as famílias `allowed`? Exige que CADA parte da arte
+    (do corpo escolhido) ofereça uma delas; o site aceita se qualquer parte oferecer."""
+    allowed = {license_family(a) for a in allowed}
+    return all(credit_options(c) & allowed for c in _item_credits(item_id, body))
+
+
+def license_report(credits):
+    """Resumo das licenças das artes usadas: dá para usar em loja com DRM? precisa
+    compartilhar derivados pela mesma licença?"""
+    options = [credit_options(c) for c in credits if c.get("licenses")]
+    drm_safe = all(o & DRM_SAFE for o in options)
+    # só é obrigado a compartilhar se alguma parte NÃO oferece opção sem share-alike
+    share_alike = any(o and o <= SHARE_ALIKE for o in options)
+    blocking = sorted({c.get("file", "") for c in credits
+                       if c.get("licenses") and not credit_options(c) & DRM_SAFE})
+    report = {"drm_safe": drm_safe, "share_alike_required": share_alike,
+              "licenses_offered": sorted(set().union(*options)) if options else []}
+    if not drm_safe:
+        report["not_drm_safe_parts"] = blocking
+    report["summary"] = t("license_drm_ok") if drm_safe else t("license_drm_no", n=len(blocking))
+    if share_alike:
+        report["summary"] += " " + t("license_share_alike")
+    return report
+

@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from .i18n import t
-from .catalog import (ANIMATIONS, BODY_TYPES, CACHE, INTENTIONAL_GAPS, ITEMS, RAW, REPO, _base_colors, _color_list, _colors_for, _fill_path, _hex, _recolor_entries, _sprite_files, is_equipment)
+from .catalog import (license_family, ANIMATIONS, BODY_TYPES, CACHE, INTENTIONAL_GAPS, ITEMS, RAW, REPO, _base_colors, _color_list, _colors_for, _fill_path, _hex, _recolor_entries, _sprite_files, is_equipment)
 
 # Layout padrão do site (spritesheet "universal"): linha inicial de cada animação
 STANDARD_ROWS = {"spellcast": 0, "thrust": 4, "walk": 8, "slash": 12, "shoot": 16, "hurt": 20,
@@ -398,14 +398,17 @@ def _write_credits(credits, base):
         txt.append("\n".join(block))
         rows.append([c.get("file", ""), c.get("notes", ""), ", ".join(c.get("authors", [])),
                      ", ".join(c.get("licenses", [])), " ".join(c.get("urls", []))])
-    head = t("credits_header")
+    authors = sorted({a for c in credits for a in c.get("authors", [])})
+    families = sorted({license_family(l) for c in credits for l in c.get("licenses", [])})
+    statement = t("credits_statement", authors=", ".join(authors), licenses=", ".join(families),
+                  file=Path(f"{base}_credits.txt").name)
+    head = t("credits_header") + statement + "\n\n" + "-" * 72 + "\n\n"
     Path(f"{base}_credits.txt").write_text(head + "\n\n".join(txt) + "\n", encoding="utf8")
     with open(f"{base}_credits.csv", "w", newline="", encoding="utf8") as f:
         csv.writer(f).writerows(rows)
-    authors = sorted({a for c in credits for a in c.get("authors", [])})
     licenses = sorted({l for c in credits for l in c.get("licenses", [])})
     return {"file": f"{base}_credits.txt", "csv": f"{base}_credits.csv",
-            "authors": authors, "licenses": licenses}
+            "authors": authors, "licenses": licenses, "statement": statement}
 
 
 def _custom_base(name):

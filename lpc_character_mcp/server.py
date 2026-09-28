@@ -16,7 +16,7 @@ from . import exporters
 from . import catalog, render
 from .i18n import t
 from .paths import OUT
-from .catalog import (ANIMATIONS, CACHE, ITEMS, REPO, _colors_for, _default_color, _item_bodies, _recolor_entries, _special_animations, _swap_for_complete, animation_gaps, animation_report, complete_alternatives, is_complete, is_equipment, item_animations)
+from .catalog import (item_license_ok, license_report, ANIMATIONS, CACHE, ITEMS, REPO, _colors_for, _default_color, _item_bodies, _recolor_entries, _special_animations, _swap_for_complete, animation_gaps, animation_report, complete_alternatives, is_complete, is_equipment, item_animations)
 from .render import (_assemble, _compose, _credits, _custom_animations, _custom_base, _missing_by_animation, _row_info, _used_files, _write_credits)
 from .links import build_url, parse_url
 
@@ -49,7 +49,7 @@ def list_categories() -> dict:
 @mcp.tool()
 def search_items(query: str = "", category: str = "", body_type: str = "",
                  animation: str = "", type_name: str = "", complete_only: bool = False,
-                 limit: int = 50) -> list[dict]:
+                 licenses: list[str] | None = None, limit: int = 50) -> list[dict]:
     """Searches items. All filters are optional and combine:
     query: words in the name/id (all must match), e.g. "leather armour".
     category: id prefix, e.g. 'hair', 'torso/shirts', 'weapons/sword'.
@@ -58,6 +58,9 @@ def search_items(query: str = "", category: str = "", body_type: str = "",
                (or male if body_type is not given).
     type_name: item type (hair, clothes, legs, shoes, weapon, hat...).
     complete_only: only items with every animation. Otherwise complete items come first.
+    licenses: only items whose every art part is available under one of these license
+              families (CC0, CC-BY, CC-BY-SA, OGA-BY, GPL). For DRM stores (Steam, App Store)
+              use ["CC0", "OGA-BY"]. Each result has `drm_safe`.
     Each result says whether it is complete and which animations are missing (for body_type or male)."""
     words = query.lower().split()
     body = body_type or "male"
@@ -74,7 +77,10 @@ def search_items(query: str = "", category: str = "", body_type: str = "",
             continue
         if animation and animation not in item_animations(i, body_type or "male"):
             continue
-        entry = {"id": i, "name": d.get("name"), "type": d.get("type_name")}
+        if licenses and not item_license_ok(i, licenses, body):
+            continue
+        entry = {"id": i, "name": d.get("name"), "type": d.get("type_name"),
+                 "drm_safe": item_license_ok(i, ["CC0", "OGA-BY"], body)}
         if is_equipment(i):
             entry["equipment_only_in"] = item_animations(i, body) + _special_animations(i, body)
         else:
@@ -132,7 +138,8 @@ def generate_character(items: list[dict], body_type: str = "male",
                        animations: list[str] | None = None, filename: str = "character.png",
                        layout: str = "standard", split: bool | str | list[str] = False,
                        export: list[str] | None = None, prefer_complete: bool = False,
-                       output_dir: str | None = None) -> dict:
+                       output_dir: str | None = None, licenses: list[str] | None = None,
+                       zip: bool = False) -> dict:
     """Builds the character spritesheet and saves it as PNG.
 
     Every result has `animation_check`: whether every item has every animation and, if not,
@@ -162,7 +169,12 @@ def generate_character(items: list[dict], body_type: str = "male",
     export: engine-ready files: "godot" (SpriteFrames .tres), "unity" (sliced sprites .meta,
            .anim clips and an AnimatorController), "web" (JSON atlas for Phaser/PixiJS + demo page),
            "site" (JSON for the generator site's "Import from Clipboard" button).
-    Always writes <name>_credits.txt and <name>_credits.csv with authors and licenses of the art used.
+    licenses: license families you accept (e.g. ["CC0", "OGA-BY"] for Steam). Items outside
+           them are listed in `warnings`. Every result has `license_check` (drm_safe,
+           share_alike_required) computed from the art actually used.
+    zip: also pack everything generated for this character into <name>.zip.
+    Always writes <name>_credits.txt and <name>_credits.csv with authors and licenses of the art
+    used, including a ready-to-paste credits-screen statement (`credits.statement`).
     """
     if layout not in ("standard", "compact"):
         return {"error": t("bad_layout")}
@@ -249,13 +261,22 @@ def generate_character(items: list[dict], body_type: str = "male",
     if replaced:
         result["replaced"] = replaced
     result["animation_check"] = animation_report(items, body_type)
+    result["license_check"] = license_report(_credits(items))
+    if zip:
+        result["zip"] = str(_zip_outputs(path))
+    if licenses:
+        blocked = [it["id"] for it in items if not item_license_ok(it["id"], licenses, body_type)]
+        if blocked:
+            result.setdefault("warnings", []).extend(
+                t("license_blocked", id=i, allowed=licenses) for i in blocked)
     return result
 
 
 @mcp.tool()
 def from_site_url(url: str) -> dict:
     """Reads a link from the LPC generator site (e.g. ...Character-Generator/#sex=male&body=Body_Color_light&...)
-    and returns {body_type, items} ready for generate_character (old links work too).
+    and returns {body_type, items} ready for generate_character (old links work too). Also
+    accepts the JSON from the site's "Export to Clipboard (JSON)" button.
     Unrecognized parameters are listed in `unresolved`."""
     return parse_url(url)
 
@@ -313,12 +334,13 @@ def _random_color(rng, d, it, hair=False):
     it["color"] = rng.choice([c for c in preferred if c in options] or options)
 
 
-def random_items(body_type="male", rng=None, fixed=None):
+def random_items(body_type="male", rng=None, fixed=None, licenses=None):
     rng = rng or random.Random()
     skin = rng.choice(SKIN_COLORS)
     female = body_type in ("female", "pregnant")
     heads = [i for i in ITEMS if i.startswith("head/heads/human/") and _supports(i, body_type)
-             and ("female" in i) == female and "child" not in i and "elderly" not in i]
+             and ("female" in i) == female and "child" not in i and "elderly" not in i
+             and (not licenses or item_license_ok(i, licenses, body_type))]
     if body_type == "child":
         heads = [i for i in ITEMS if i.startswith("head/heads/human/") and "child" in i] or heads
     items = [{"id": "body/body", "color": skin}]
@@ -330,7 +352,8 @@ def random_items(body_type="male", rng=None, fixed=None):
 
         def slot_pool(prefs):
             return [i for i in ITEMS if any(i.startswith(p) for p in prefs)
-                    and _supports(i, body_type) and not ITEMS[i].get("match_body_color")]
+                    and _supports(i, body_type) and not ITEMS[i].get("match_body_color")
+                    and (not licenses or item_license_ok(i, licenses, body_type))]
         pool = slot_pool(prefixes) or (slot_pool(fallback[0]) if fallback else [])
         # sorteia só entre itens com todas as animações; acessório opcional sem versão
         # completa (ex.: capas) fica de fora
@@ -358,12 +381,13 @@ def random_items(body_type="male", rng=None, fixed=None):
 
 @mcp.tool()
 def random_character(body_type: str = "male", seed: int | None = None,
-                     fixed_items: list[dict] | None = None) -> dict:
+                     fixed_items: list[dict] | None = None, licenses: list[str] | None = None) -> dict:
     """Rolls a random character (skin, head, hair, clothes, shoes and sometimes a beard, hat or
     vest), using only items that have every animation. Does not render: returns
     {items, body_type, url} to review and pass to generate_character. `fixed_items` are always
-    added (e.g. a weapon). Use `seed` to repeat the same roll."""
-    items = random_items(body_type, random.Random(seed), fixed_items)
+    added (e.g. a weapon). Use `seed` to repeat the same roll. `licenses` limits the roll to
+    those license families (e.g. ["CC0", "OGA-BY"])."""
+    items = random_items(body_type, random.Random(seed), fixed_items, licenses)
     return {"body_type": body_type, "items": items, "url": build_url(items, body_type)}
 
 
@@ -372,7 +396,7 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
                    prefix: str = "npc", fixed_items: list[dict] | None = None,
                    animations: list[str] | None = None, layout: str = "standard",
                    split: bool = False, export: list[str] | None = None,
-                   output_dir: str | None = None) -> dict:
+                   output_dir: str | None = None, licenses: list[str] | None = None) -> dict:
     """Generates many random characters at once (e.g. villagers for a town).
     Saves <prefix>_01.png, <prefix>_02.png... and the credits for each.
     body_types: bodies to pick from (default: male and female).
@@ -382,9 +406,9 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
     out = []
     for n in range(1, count + 1):
         body = rng.choice(bodies)
-        items = random_items(body, rng, fixed_items)
+        items = random_items(body, rng, fixed_items, licenses)
         r = generate_character(items, body, animations, f"{prefix}_{n:02d}.png", layout, split,
-                               export, output_dir=output_dir)
+                               export, output_dir=output_dir, licenses=licenses)
         out.append({"file": r.get("file"), "body_type": body, "items": items,
                     "complete": r.get("animation_check", {}).get("complete"),
                     "url": build_url(items, body), **({"error": r["error"]} if "error" in r else {})})
@@ -509,6 +533,31 @@ def update_definitions(clear_image_cache: bool = False) -> dict:
 
 
 # ---------- exportação ----------
+# arquivos e pastas que uma geração cria ao lado de <nome>.png
+OUTPUT_SUFFIXES = [".png", ".png.meta", ".tres", ".json", ".controller", ".controller.meta",
+                   "_credits.txt", "_credits.csv", "_site.json", "_demo.html"]
+OUTPUT_FOLDERS = ["_anims", "_frames", "_items", "_unity_anims"]
+
+
+def _zip_outputs(path):
+    """<nome>.zip com tudo o que foi gerado para este personagem."""
+    import zipfile
+    folder, stem = path.parent, path.stem
+    out = folder / f"{stem}.zip"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for suffix in OUTPUT_SUFFIXES:
+            f = folder / f"{stem}{suffix}"
+            if f.exists():
+                z.write(f, f.name)
+        for suffix in OUTPUT_FOLDERS:
+            d = folder / f"{stem}{suffix}"
+            if d.is_dir():
+                for f in sorted(d.rglob("*")):
+                    if f.is_file():
+                        z.write(f, f.relative_to(folder).as_posix())
+    return out
+
+
 def _derived_animations(items, index):
     """Animações extras do gerador oficial: golpe de uma mão (sempre que há backslash) e
     regar (só com o regador)."""

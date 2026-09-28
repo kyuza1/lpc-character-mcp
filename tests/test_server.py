@@ -712,3 +712,68 @@ def test_golpe_de_uma_mao_e_regar(tmp_path):
     a = json.loads((tmp_path / "rg.json").read_text(encoding="utf8"))
     xs = [a["frames"][k]["frame"]["x"] // 64 for k in a["animations"]["watering_down"]]
     assert xs == [0, 1, 4, 4, 4, 4, 5]
+
+
+# ---------- licenças ----------
+def test_familia_de_licenca():
+    from lpc_character_mcp.catalog import license_family
+    assert license_family("OGA-BY-3.0") == license_family("OGA-BY 3.0+") == "OGA-BY"
+    assert license_family("CC-BY-SA 4.0") == "CC-BY-SA" and license_family("CC-BY 3.0+") == "CC-BY"
+
+
+def test_filtro_de_licenca_na_busca_e_no_sorteio():
+    from lpc_character_mcp.catalog import item_license_ok
+    safe = s.search_items(licenses=["CC0", "OGA-BY"], body_type="male", limit=999)
+    assert safe and all(x["drm_safe"] for x in safe)
+    assert len(safe) < len(s.search_items(body_type="male", limit=999))
+    for seed in range(10):
+        r = s.random_character("female", seed=seed, licenses=["CC0", "OGA-BY"])
+        assert all(item_license_ok(i["id"], ["CC0", "OGA-BY"], "female") for i in r["items"])
+
+
+def test_license_check_no_resultado():
+    r = s.random_character("male", seed=4, licenses=["CC0", "OGA-BY"])
+    g = s.generate_character(r["items"], animations=["walk"], filename="lc.png", licenses=["CC0", "OGA-BY"])
+    assert g["license_check"]["drm_safe"] is True and "warnings" not in g
+    from lpc_character_mcp.catalog import license_report
+    rep = license_report([{"file": "x", "licenses": ["CC-BY-SA 3.0", "GPL 3.0"]}])
+    assert rep["drm_safe"] is False and rep["share_alike_required"] is True
+    assert rep["not_drm_safe_parts"] == ["x"]
+
+
+def test_aviso_de_item_fora_das_licencas():
+    from lpc_character_mcp.catalog import item_license_ok
+    fora = next(i for i in s.ITEMS if i.startswith("torso/") and "male" in s._item_bodies(s.ITEMS[i])
+                and not item_license_ok(i, ["CC0"], "male"))
+    g = s.generate_character([{"id": "body/body"}, {"id": fora}], animations=["walk"],
+                             filename="lf.png", licenses=["CC0"])
+    assert any(fora in w for w in g["warnings"])
+
+
+# ---------- créditos, zip e json do site ----------
+def test_texto_pronto_de_creditos(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="ct.png")
+    st = r["credits"]["statement"]
+    assert "Sprites by: " in st and "Stephen Challener (Redshrike)" in st and "ct_credits.txt" in st
+    assert st in (tmp_path / "ct_credits.txt").read_text(encoding="utf8")
+
+
+def test_zip_com_tudo(tmp_path):
+    import zipfile
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="zp.png",
+                             export=["godot", "web"], split=["animation"], zip=True)
+    nomes = zipfile.ZipFile(r["zip"]).namelist()
+    assert {"zp.png", "zp.tres", "zp.json", "zp_demo.html", "zp_credits.txt", "zp_anims/walk.png"} <= set(nomes)
+
+
+def test_importa_json_do_site():
+    import json
+    v1 = json.dumps({"version": 1, "url": URL})
+    assert s.from_site_url(v1)["items"][0] == {"id": "body/body", "color": "light"}
+    v2 = json.dumps({"version": 2, "bodyType": "female", "selections": {
+        "body": {"itemId": "body/body", "recolor": "olive"},
+        "apron": {"itemId": "torso/aprons/torso_aprons_apron", "variant": "leather"}}})
+    r = s.from_site_url(v2)
+    assert r["body_type"] == "female"
+    assert r["items"] == [{"id": "body/body", "color": "olive"},
+                          {"id": "torso/aprons/torso_aprons_apron", "variant": "leather"}]

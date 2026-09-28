@@ -48,11 +48,35 @@ MESSAGES = {
                               "pt": " (não há alternativa completa do mesmo tipo)"},
     "report_hint": {"en": " Use prefer_complete=True to swap them for complete items.",
                     "pt": " Use prefer_complete=True para trocar por itens completos."},
+    # license check
+    "license_drm_ok": {"en": "Every art part allows CC0 or OGA-BY: fine for DRM stores (Steam, App Store).",
+                       "pt": "Todas as partes da arte aceitam CC0 ou OGA-BY: pode usar em lojas com DRM (Steam, App Store)."},
+    "license_drm_no": {"en": "{n} art part(s) do not allow CC0/OGA-BY: avoid DRM stores or swap them "
+                             "(search_items with licenses=[\"CC0\", \"OGA-BY\"]).",
+                       "pt": "{n} parte(s) da arte não aceitam CC0/OGA-BY: evite lojas com DRM ou troque "
+                             "(search_items com licenses=[\"CC0\", \"OGA-BY\"])."},
+    "license_share_alike": {"en": "Some parts are only CC-BY-SA/GPL: share changed art under the same license.",
+                            "pt": "Algumas partes são só CC-BY-SA/GPL: compartilhe a arte alterada pela mesma licença."},
+    "license_blocked": {"en": "{id} is not available under the licenses {allowed}",
+                        "pt": "{id} não está disponível nas licenças {allowed}"},
     # credits file
     "credits_header": {"en": "Art from the Universal LPC Spritesheet Character Generator.\n"
                              "When you use these images, credit the authors below according to the licenses.\n\n",
                        "pt": "Artes do Universal LPC Spritesheet Character Generator.\n"
                              "Ao usar estas imagens, dê crédito aos autores abaixo conforme as licenças.\n\n"},
+    "credits_statement": {
+        "en": "Credits screen text (paste it in your game):\n"
+              "Sprites by: {authors}\n"
+              "Sprites from the Liberated Pixel Cup collection on OpenGameArt.org: "
+              "http://opengameart.org/content/lpc-collection\n"
+              "License(s): {licenses}\n"
+              "Detailed credits: {file}",
+        "pt": "Texto para a tela de créditos (cole no seu jogo):\n"
+              "Sprites by: {authors}\n"
+              "Sprites from the Liberated Pixel Cup collection on OpenGameArt.org: "
+              "http://opengameart.org/content/lpc-collection\n"
+              "License(s): {licenses}\n"
+              "Detailed credits: {file}"},
     "credits_notes": {"en": "Notes", "pt": "Notas"},
     "credits_authors": {"en": "Authors", "pt": "Autores"},
     "credits_licenses": {"en": "Licenses", "pt": "Licenças"},

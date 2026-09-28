@@ -1,4 +1,5 @@
 """Links do site do gerador LPC: lê e monta a parte depois do # (inclusive nomes antigos)."""
+import json
 import urllib.parse
 
 from .catalog import ITEMS, _color_list, _colors_for, _default_color, _recolor_entries
@@ -75,7 +76,29 @@ def _aliases():
     return types, prefixes, exact
 
 
+def parse_site_json(text):
+    """JSON do botão "Export to Clipboard" do site (versão 1 ou 2) -> {body_type, items}."""
+    doc = json.loads(text)
+    if doc.get("url"):
+        return parse_url(doc["url"])
+    body = doc.get("bodyType", "male")
+    items = []
+    for sel in (doc.get("selections") or {}).values():
+        item_id = sel.get("itemId")
+        if item_id not in ITEMS:
+            continue
+        it = {"id": item_id}
+        if sel.get("variant"):
+            it["variant"] = sel["variant"]
+        elif sel.get("recolor"):
+            it["color"] = sel["recolor"]
+        items.append(it)
+    return {"body_type": body, "items": items}
+
+
 def parse_url(url: str) -> dict:
+    if url.lstrip().startswith("{"):
+        return parse_site_json(url)
     frag = url.split("#", 1)[1] if "#" in url else url
     params = [p.split("=", 1) for p in frag.split("&") if "=" in p]
     by_type, subs = _by_type(), _sub_parts()
