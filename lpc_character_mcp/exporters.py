@@ -296,10 +296,113 @@ AnimationClip:
   m_Events: []
 """
         (folder / f"{name}.anim").write_text(clip, encoding="utf8")
+        # guid fixo para o controlador conseguir apontar para o clipe
+        (folder / f"{name}.anim.meta").write_text(
+            _native_meta(_guid(f"lpc-clip:{path.name}:{name}"), 7400000), encoding="utf8")
+
+    controller = _unity_controller(path, [c[0] for c in clips])
     return {"meta": f"{path}.meta", "anims_folder": str(folder), "clips": len(clips),
-            "how_to_use": f"Copie {path.name}, {path.name}.meta e a pasta {folder.name} para "
-                          f"Assets/ no Unity. Os sprites já vêm fatiados (walk_down_0...) e cada "
-                          f".anim pode ir direto num Animator de um SpriteRenderer."}
+            "controller": str(controller),
+            "how_to_use": f"Copie {path.name}, {path.name}.meta, {controller.name}(.meta) e a pasta "
+                          f"{folder.name} para Assets/ no Unity (ou gere com output_dir dentro de "
+                          f"Assets/). Coloque o {controller.name} no Animator de um objeto com "
+                          f"SpriteRenderer e troque a animação com animator.Play(\"walk_left\")."}
+
+
+def _native_meta(guid, main_id):
+    return (f"fileFormatVersion: 2\nguid: {guid}\nNativeFormatImporter:\n  externalObjects: {{}}\n"
+            f"  mainObjectFileID: {main_id}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
+
+
+def _unity_controller(path, clip_names):
+    """AnimatorController com um estado por clipe (sem transições): o jogo escolhe o estado
+    com animator.Play("walk_down"). Começa em idle_down (ou no primeiro clipe)."""
+    path = Path(path)
+    default = "idle_down" if "idle_down" in clip_names else clip_names[0]
+    ids = {n: _internal_id(f"lpc-state:{path.name}:{n}") for n in clip_names}
+    sm_id = _internal_id(f"lpc-sm:{path.name}")
+    states, children = [], []
+    for i, name in enumerate(clip_names):
+        clip_guid = _guid(f"lpc-clip:{path.name}:{name}")
+        x, y = 300 + (i // 12) * 260, (i % 12) * 60
+        children.append(f"  - serializedVersion: 1\n    m_State: {{fileID: {ids[name]}}}\n"
+                        f"    m_Position: {{x: {x}, y: {y}, z: 0}}\n")
+        states.append(f"""--- !u!1102 &{ids[name]}
+AnimatorState:
+  serializedVersion: 6
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {{fileID: 0}}
+  m_PrefabInstance: {{fileID: 0}}
+  m_PrefabAsset: {{fileID: 0}}
+  m_Name: {name}
+  m_Speed: 1
+  m_CycleOffset: 0
+  m_Transitions: []
+  m_StateMachineBehaviours: []
+  m_Position: {{x: 50, y: 50, z: 0}}
+  m_IKOnFeet: 0
+  m_WriteDefaultValues: 1
+  m_Mirror: 0
+  m_SpeedParameterActive: 0
+  m_MirrorParameterActive: 0
+  m_CycleOffsetParameterActive: 0
+  m_TimeParameterActive: 0
+  m_Motion: {{fileID: 7400000, guid: {clip_guid}, type: 2}}
+  m_Tag: 
+  m_SpeedParameter: 
+  m_MirrorParameter: 
+  m_CycleOffsetParameter: 
+  m_TimeParameter: 
+""")
+    text = f"""%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!91 &9100000
+AnimatorController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {{fileID: 0}}
+  m_PrefabInstance: {{fileID: 0}}
+  m_PrefabAsset: {{fileID: 0}}
+  m_Name: {path.stem}
+  serializedVersion: 6
+  m_AnimatorParameters: []
+  m_AnimatorLayers:
+  - serializedVersion: 5
+    m_Name: Base Layer
+    m_StateMachine: {{fileID: {sm_id}}}
+    m_Mask: {{fileID: 0}}
+    m_Motions: []
+    m_Behaviours: []
+    m_BlendingMode: 0
+    m_SyncedLayerIndex: -1
+    m_DefaultWeight: 0
+    m_IKPass: 0
+    m_SyncedLayerAffectsTiming: 0
+    m_Controller: {{fileID: 9100000}}
+  m_EvaluateTransitionsOnStart: 1
+--- !u!1107 &{sm_id}
+AnimatorStateMachine:
+  serializedVersion: 7
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {{fileID: 0}}
+  m_PrefabInstance: {{fileID: 0}}
+  m_PrefabAsset: {{fileID: 0}}
+  m_Name: Base Layer
+  m_ChildStates:
+{"".join(children)}  m_ChildStateMachines: []
+  m_AnyStateTransitions: []
+  m_EntryTransitions: []
+  m_StateMachineTransitions: {{}}
+  m_StateMachineBehaviours: []
+  m_AnyStatePosition: {{x: 50, y: 20, z: 0}}
+  m_EntryPosition: {{x: 50, y: 120, z: 0}}
+  m_ExitPosition: {{x: 800, y: 120, z: 0}}
+  m_ParentStateMachinePosition: {{x: 800, y: 20, z: 0}}
+  m_DefaultState: {{fileID: {ids[default]}}}
+{"".join(states)}"""
+    out = path.with_suffix(".controller")
+    out.write_text(text, encoding="utf8")
+    Path(f"{out}.meta").write_text(_native_meta(_guid(f"lpc-ctrl:{path.name}"), 9100000), encoding="utf8")
+    return out
 
 
 # ---------- Web (Phaser 3 / PixiJS) ----------

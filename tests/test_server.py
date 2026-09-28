@@ -538,3 +538,18 @@ def test_godot_fora_de_projeto_usa_padrao(tmp_path):
 def test_lote_com_output_dir(tmp_path):
     r = s.generate_batch(2, seed=1, animations=["walk"], layout="compact", output_dir=str(tmp_path / "vila"))
     assert all((tmp_path / "vila" / f"npc_0{n}.png").exists() for n in (1, 2))
+
+
+def test_unity_gera_controller_com_todos_os_clipes(tmp_path):
+    import re
+    s.generate_character(FERREIRO, animations=["walk", "idle", "slash"], filename="uc.png", export=["unity"])
+    ctrl = (tmp_path / "uc.controller").read_text(encoding="utf8")
+    clips = sorted(p.stem for p in (tmp_path / "uc_unity_anims").glob("*.anim"))
+    estados = sorted(re.findall(r"m_Name: (\w+)\n  m_Speed", ctrl))
+    assert estados == clips and "idle_down" in estados
+    # cada estado aponta para o guid do .meta do clipe correspondente
+    for nome in clips:
+        meta = (tmp_path / "uc_unity_anims" / f"{nome}.anim.meta").read_text(encoding="utf8")
+        guid = re.search(r"guid: (\w+)", meta).group(1)
+        assert f"guid: {guid}, type: 2" in ctrl
+    assert "mainObjectFileID: 9100000" in (tmp_path / "uc.controller.meta").read_text(encoding="utf8")
