@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — 2026-09-28
+### Added
+- Messages in English by default; Portuguese with `LPC_LANG=pt` (warnings, errors,
+  animation report, credits, command line and web demo).
+- Official MCP Registry listing (`io.github.kyuza1/lpc-character-mcp`), published
+  automatically on each release.
+- MCP Bundle (`lpc-character-mcp.mcpb`) attached to each release: one-click install in
+  Claude Desktop, with output folder and language options.
+- `glama.json` for the Glama directory.
+
+### Changed
+- Tool descriptions and server instructions in English; the assistant replies in the
+  user's language.
+
 ## 0.3.0 — 2026-09-28
 ### Added
 - `output_dir` in `generate_character` and `generate_batch`: save straight into a game

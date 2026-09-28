@@ -668,3 +668,20 @@ def test_mensagens_em_ingles_por_padrao(monkeypatch):
     assert rep["summary"] == "All animations are complete for every item."
     from lpc_character_mcp.i18n import MESSAGES
     assert all(set(v) == {"en", "pt"} for v in MESSAGES.values())  # toda mensagem nos 2 idiomas
+
+
+# ---------- publicação ----------
+def test_versoes_iguais_em_todos_os_arquivos():
+    import json
+    from pathlib import Path
+    from lpc_character_mcp import __version__
+    root = Path(__file__).parent.parent
+    server = json.loads((root / "server.json").read_text(encoding="utf8"))
+    manifest = json.loads((root / "mcpb" / "manifest.json").read_text(encoding="utf8"))
+    assert server["version"] == server["packages"][0]["version"] == __version__
+    assert manifest["version"] == __version__
+    assert manifest["server"]["mcp_config"]["args"] == [f"lpc-character-mcp=={__version__}"]
+    # o registro confere o dono do pacote por esta linha no README do PyPI
+    assert f"mcp-name: {server['name']}" in (root / "README.md").read_text(encoding="utf8")
+    # o manifesto do MCPB lista as mesmas ferramentas do servidor
+    assert {t["name"] for t in manifest["tools"]} == {t.name for t in asyncio.run(s.mcp.list_tools())}

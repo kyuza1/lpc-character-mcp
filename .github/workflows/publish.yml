@@ -1,9 +1,9 @@
 name: publish
 
-# Publica no PyPI quando uma release é criada no GitHub.
-# Configuração única no PyPI (trusted publishing, sem token):
-#   pypi.org > Your projects > Publishing > Add a new pending publisher
-#   owner: kyuza1 · repository: lpc-character-mcp · workflow: publish.yml · environment: pypi
+# Roda ao publicar uma release no GitHub (tag vX.Y.Z):
+#   1. PyPI (trusted publishing, sem token)
+#   2. Registro oficial de MCP (login por OIDC do GitHub, sem token)
+#   3. Pacote .mcpb (Claude Desktop / Smithery) anexado à release
 on:
   release:
     types: [published]
@@ -16,6 +16,50 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      - name: versão da tag = versão do pacote
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(grep -Po '__version__ = "\K[^"]+' lpc_character_mcp/__init__.py)
+          test "$TAG" = "$PKG" || { echo "tag $TAG != pacote $PKG"; exit 1; }
       - uses: astral-sh/setup-uv@v6
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: espera o PyPI mostrar a versão nova
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            curl -fs "https://pypi.org/pypi/lpc-character-mcp/$V/json" >/dev/null && exit 0
+            sleep 10
+          done
+          echo "a versão $V não apareceu no PyPI"; exit 1
+      - name: instala o mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - run: ./mcp-publisher validate
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish
+
+  mcpb:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+      - run: npx -y @anthropic-ai/mcpb validate mcpb/manifest.json
+      - run: npx -y @anthropic-ai/mcpb pack mcpb lpc-character-mcp.mcpb
+      - run: gh release upload "$GITHUB_REF_NAME" lpc-character-mcp.mcpb --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

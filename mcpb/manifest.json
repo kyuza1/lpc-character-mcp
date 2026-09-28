@@ -1,0 +1,66 @@
+{
+  "manifest_version": "0.3",
+  "name": "lpc-character-mcp",
+  "display_name": "LPC Character Generator",
+  "version": "0.4.0",
+  "description": "Generate LPC pixel-art character spritesheets and export them to Godot, Unity and the web.",
+  "long_description": "Build characters from the Universal LPC Spritesheet Character Generator parts by asking in plain language. Shows an animated preview in the chat, warns about missing animations, writes art credits and exports ready-to-use files for Godot 4 (SpriteFrames), Unity (sliced sprites, clips and an AnimatorController) and the web (Phaser/PixiJS atlas). Requires uv (https://docs.astral.sh/uv/) and Git.",
+  "author": {
+    "name": "LUCAS ARAUJO",
+    "url": "https://github.com/kyuza1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kyuza1/lpc-character-mcp"
+  },
+  "homepage": "https://github.com/kyuza1/lpc-character-mcp",
+  "documentation": "https://github.com/kyuza1/lpc-character-mcp#readme",
+  "support": "https://github.com/kyuza1/lpc-character-mcp/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": ["lpc", "pixel-art", "sprites", "spritesheet", "godot", "unity", "gamedev"],
+  "server": {
+    "type": "python",
+    "entry_point": "server/main.py",
+    "mcp_config": {
+      "command": "uvx",
+      "args": ["lpc-character-mcp==0.4.0"],
+      "env": {
+        "LPC_OUTPUT_DIR": "${user_config.output_dir}",
+        "LPC_LANG": "${user_config.language}"
+      }
+    }
+  },
+  "tools": [
+    {"name": "generate_character", "description": "Build the spritesheet, credits and engine files"},
+    {"name": "preview_character", "description": "Animated preview in the chat"},
+    {"name": "search_items", "description": "Search LPC items with filters"},
+    {"name": "get_item", "description": "Colors, variants and animations of an item"},
+    {"name": "list_categories", "description": "List item categories"},
+    {"name": "random_character", "description": "Roll a random character"},
+    {"name": "generate_batch", "description": "Generate many random NPCs"},
+    {"name": "from_site_url", "description": "Read a generator site link"},
+    {"name": "to_site_url", "description": "Build a generator site link"},
+    {"name": "update_definitions", "description": "Pull new items from the official repository"},
+    {"name": "clear_cache", "description": "Delete cached images"}
+  ],
+  "user_config": {
+    "output_dir": {
+      "type": "directory",
+      "title": "Output folder",
+      "description": "Where generated characters are saved (e.g. your game's sprites folder).",
+      "required": false,
+      "default": "${HOME}/lpc-characters"
+    },
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Language of messages and warnings: en or pt.",
+      "required": false,
+      "default": "en"
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"]
+  }
+}

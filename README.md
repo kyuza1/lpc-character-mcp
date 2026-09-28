@@ -1,5 +1,7 @@
 # LPC Character Generator — MCP
 
+<!-- mcp-name: io.github.kyuza1/lpc-character-mcp -->
+
 *English · [Português](https://github.com/kyuza1/lpc-character-mcp/blob/main/README.pt-BR.md)*
 
 [![tests](https://github.com/kyuza1/lpc-character-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/kyuza1/lpc-character-mcp/actions/workflows/tests.yml)
@@ -42,7 +44,12 @@ claude mcp add lpc --scope user -- uvx lpc-character-mcp
 ```
 
 ### Claude Desktop
-**Settings → Developer → Edit config** (`claude_desktop_config.json`):
+**One click:** download `lpc-character-mcp.mcpb` from the
+[latest release](https://github.com/kyuza1/lpc-character-mcp/releases/latest) and open it
+(or drag it into **Settings → Extensions**). You can pick the output folder and language
+during install.
+
+Or add it by hand in **Settings → Developer → Edit config** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -76,6 +83,11 @@ on Windows, `%USERPROFILE%\.gemini\config\mcp_config.json`):
 }
 ```
 Save and click **Refresh** on the MCP Servers page. In the Antigravity CLI, use `/mcp`.
+
+### Directories
+Also listed in the [official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.kyuza1/lpc-character-mcp)
+as `io.github.kyuza1/lpc-character-mcp`, which clients and directories that read the
+registry pick up automatically.
 
 ### Other MCP clients
 Any client that runs **stdio** servers works with the same `uvx lpc-character-mcp` command.

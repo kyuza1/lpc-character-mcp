@@ -42,7 +42,12 @@ claude mcp add lpc --scope user -- uvx lpc-character-mcp
 ```
 
 ### Claude Desktop
-Em **Configurações → Desenvolvedor → Editar configuração** (`claude_desktop_config.json`):
+**Com um clique:** baixe o `lpc-character-mcp.mcpb` da
+[release mais recente](https://github.com/kyuza1/lpc-character-mcp/releases/latest) e abra
+o arquivo (ou arraste para **Configurações → Extensões**). Na instalação dá para escolher a
+pasta de saída e o idioma.
+
+Ou adicione à mão em **Configurações → Desenvolvedor → Editar configuração** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -85,6 +90,11 @@ No painel do agente clique em **…** → **MCP Servers** → **Manage MCP Serve
 ```
 Salve e clique em **Refresh** na tela de MCP Servers. Na CLI do Antigravity, use `/mcp`
 para ver e recarregar os servidores.
+
+### Catálogos
+Também está no [registro oficial de MCP](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.kyuza1/lpc-character-mcp)
+como `io.github.kyuza1/lpc-character-mcp`, de onde clientes e catálogos que leem o registro
+puxam automaticamente.
 
 ### Outros clientes MCP
 Qualquer cliente que rode servidores **stdio** funciona com o mesmo comando `uvx` acima.

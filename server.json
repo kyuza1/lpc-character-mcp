@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kyuza1/lpc-character-mcp",
+  "title": "LPC Character Generator",
+  "description": "Generate LPC pixel-art character spritesheets and export them to Godot, Unity and the web.",
+  "repository": {
+    "url": "https://github.com/kyuza1/lpc-character-mcp",
+    "source": "github"
+  },
+  "version": "0.4.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "lpc-character-mcp",
+      "version": "0.4.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "LPC_OUTPUT_DIR",
+          "description": "Folder where generated characters are saved (default: ~/lpc-characters)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "LPC_LANG",
+          "description": "Message language: en (default) or pt",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
