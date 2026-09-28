@@ -45,11 +45,21 @@ def _ensure_definitions():
     """Na primeira execução, baixa só as pastas de definições JSON do repositório (sem os PNGs)."""
     if DEFS.exists():
         return
+    import shutil
     import subprocess
+    import sys
+    if not shutil.which("git"):
+        sys.exit("lpc-mcp: o Git não foi encontrado. Instale em https://git-scm.com/downloads "
+                 "e rode de novo (ele só é usado para baixar as definições dos itens).")
     url = "https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator.git"
-    run = lambda *a, **kw: subprocess.run(a, check=True, capture_output=True, **kw)
-    run("git", "clone", "--depth", "1", "--filter=blob:none", "--sparse", url, str(REPO))
-    run("git", "sparse-checkout", "set", "sheet_definitions", "palette_definitions", cwd=REPO)
+    run = lambda *a, **kw: subprocess.run(a, check=True, capture_output=True, text=True, **kw)
+    try:
+        run("git", "clone", "--depth", "1", "--filter=blob:none", "--sparse", url, str(REPO))
+        run("git", "sparse-checkout", "set", "sheet_definitions", "palette_definitions", cwd=REPO)
+    except subprocess.CalledProcessError as e:
+        shutil.rmtree(REPO, ignore_errors=True)  # não deixa um clone pela metade
+        sys.exit(f"lpc-mcp: falha ao baixar as definições do GitHub (verifique a internet).
+{e.stderr}")
 
 
 _ensure_definitions()
