@@ -60,8 +60,22 @@ Exemplo de `items`:
 ]
 ```
 
-A imagem sai em `output/` (ou em `LPC_OUTPUT_DIR`), com quadros de 64×64 e
-cada animação empilhada verticalmente (4 linhas: cima, esquerda, baixo, direita).
+A imagem sai em `output/` (ou em `LPC_OUTPUT_DIR`), com cada animação empilhada
+verticalmente (4 linhas: cima, esquerda, baixo, direita). O resultado diz a posição
+`y` e o tamanho do quadro (`frame`) de cada animação.
+
+### Cores
+- `"color": "blonde"` — uma cor (veja `colors` em `get_item`).
+- `"color": ["steel", "oak"]` — itens com várias partes (lâmina e cabo, armadura e
+  cinto...). As partes aparecem em `color_parts` no `get_item`; use `null` para
+  manter a cor padrão de uma parte.
+- Cabeça, orelhas, nariz e outros itens de pele sem cor herdam a cor do corpo.
+
+### Animações especiais
+Armas grandes e ferramentas (espadas, lanças, martelo, machado, arco...) usam
+quadros de 128 ou 192px. Elas entram sozinhas quando a animação base é pedida
+(ex.: pedir `slash` com uma espada gera também `slash_128`; o martelo gera
+`tool_hammer`).
 
 ## Testes
 ```
@@ -73,8 +87,6 @@ python -m pytest -q
 - Nem todo item tem arte para todas as animações/corpos (ex.: a túnica só existe
   no corpo feminino e não tem "idle"; o arco só aparece em "shoot"). Nesses casos o
   resultado traz um campo `missing` dizendo o que ficou de fora.
-- Itens com várias cores usam só a primeira cor.
-- Animações de arma "oversize" (golpe grande de 128/192px) ainda não são incluídas.
 
 ## Licença das artes
 As sprites são LPC (CC-BY-SA 3.0 / OGA-BY 3.0 / GPL 3.0). Se publicar um jogo,

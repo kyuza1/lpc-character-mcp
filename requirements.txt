@@ -1,2 +1,3 @@
 mcp>=2
 pillow
+numpy

@@ -6,10 +6,12 @@ do GitHub (com cache local em ./cache).
 import io
 import json
 import os
+import re
 import urllib.request
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
+import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).parent
@@ -68,15 +70,32 @@ def _palette_file(material, spec):
     return PALS / mat / f"{mat}_{ver}.json"
 
 
+def _read_palette(path):
+    return json.loads(path.read_text(encoding="utf8")) if path.exists() else {}
+
+
 def _colors_for(recolor):
     """Retorna {nome_da_cor: [hex...]} para uma entrada de recolor."""
     out = {}
     for spec in recolor.get("palettes", []):
-        p = _palette_file(recolor["material"], spec)
-        if p.exists():
-            for name, cols in json.loads(p.read_text(encoding="utf8")).items():
-                out.setdefault(name, cols)
+        for name, cols in _read_palette(_palette_file(recolor["material"], spec)).items():
+            out.setdefault(name, cols)
     return out
+
+
+def _base_colors(recolor):
+    """Cores de referência (as que estão desenhadas no PNG original)."""
+    material = recolor["material"]
+    base = recolor.get("base") or _material_base(material)
+    if base and "." in base:  # 'lpcr.brown' = versão.cor
+        ver, name = base.split(".", 1)
+        return _read_palette(PALS / material / f"{material}_{ver}.json").get(name)
+    return _colors_for(recolor).get(base)
+
+
+def _default_color(recolor):
+    base = recolor.get("base") or _material_base(recolor["material"])
+    return base.split(".")[-1] if base else None
 
 
 def _recolor_entries(d):
@@ -85,7 +104,7 @@ def _recolor_entries(d):
         return []
     if "material" in r:
         return [r]
-    return [r[k] for k in sorted(r) if k.startswith("color_")]
+    return [r[k] for k in sorted(r, key=lambda k: int(k.split("_")[1])) if k.startswith("color_")]
 
 
 def _hex(h):
@@ -108,35 +127,121 @@ def _fetch(rel):
     return Image.open(io.BytesIO(data)).convert("RGBA")
 
 
-def _recolor(img, recolor, color):
-    colors = _colors_for(recolor)
-    base = recolor.get("base") or _material_base(recolor["material"])
-    if not color or color == base or base not in colors or color not in colors:
+def _color_list(it):
+    """'color' pode ser uma string ou uma lista (uma cor por parte: color_1, color_2...)."""
+    c = it.get("color")
+    return c if isinstance(c, list) else [c]
+
+
+def _recolor(img, d, colors):
+    """Troca a paleta de cada parte (color_1, color_2...) pela cor pedida, como o site faz."""
+    mapping = {}
+    for entry, color in zip(_recolor_entries(d), colors):
+        if not color:
+            continue
+        src, dst = _base_colors(entry), _colors_for(entry).get(color)
+        if src and dst:
+            mapping.update({_hex(a): _hex(b) for a, b in zip(src, dst) if a != b})
+    if not mapping:
         return img
-    mapping = {_hex(a): _hex(b) for a, b in zip(colors[base], colors[color])}
-    px = img.load()
-    for y in range(img.height):
-        for x in range(img.width):
-            r, g, b, a = px[x, y]
-            if a and (r, g, b) in mapping:
-                px[x, y] = (*mapping[(r, g, b)], a)
-    return img
+    arr = np.array(img)
+    rgb = arr[..., :3].astype(np.uint32)
+    key = (rgb[..., 0] << 16) | (rgb[..., 1] << 8) | rgb[..., 2]
+    for (r, g, b), new in mapping.items():
+        arr[..., :3][key == ((r << 16) | (g << 8) | b)] = new
+    return Image.fromarray(arr, "RGBA")
+
+
+def _item_file(d, it, path, anim=None):
+    """PNG de uma camada: '<path><anim>.png', '<path><anim>/<variante>.png' ou,
+    em animações especiais (anim=None), '<path><variante>.png'."""
+    colors = _color_list(it)
+    if d.get("variants"):
+        v = it.get("variant") or (colors[0] if colors[0] in d["variants"] else d["variants"][0])
+        v = v.replace(" ", "_")
+        return _fetch(f"{path}{anim}/{v}.png" if anim else f"{path}{v}.png")
+    img = _fetch(f"{path}{anim}.png" if anim else f"{path}.png")
+    return _recolor(img, d, colors) if img is not None else None
 
 
 def _layer_image(d, layer, body, anim, variant, colors):
-    path = layer.get(body) or layer.get("male")
+    path = layer.get(body)
     if not path or layer.get("custom_animation") or layer.get("is_mask"):
         return None
-    if d.get("variants"):
-        v = variant or (colors[0] if colors and colors[0] in d["variants"] else d["variants"][0])
-        return _fetch(f"{path}{anim}/{v}.png")
-    img = _fetch(f"{path}{anim}.png")
-    if img is None:
-        return None
-    entries = _recolor_entries(d)
-    if entries:
-        img = _recolor(img, entries[0], colors[0] if colors else None)
-    return img
+    return _item_file(d, {"variant": variant, "color": colors}, path, anim)
+
+
+# ---------- animações especiais (armas grandes, ferramentas) ----------
+_CUSTOM_ANIMS = None
+
+
+def _custom_animations():
+    """Lê sources/custom-animations.ts do repositório: {nome: {frameSize, frames, single}}."""
+    global _CUSTOM_ANIMS
+    if _CUSTOM_ANIMS is None:
+        local = REPO / "sources" / "custom-animations.ts"
+        if local.exists():
+            text = local.read_text(encoding="utf8")
+        else:
+            url = RAW.replace("/spritesheets/", "/sources/custom-animations.ts")
+            text = urllib.request.urlopen(url, timeout=30).read().decode("utf8")
+        body = text[text.index("customAnimations: Record"):]
+        _CUSTOM_ANIMS = {}
+        for m in re.finditer(r"\n  (\w+): \{(.*?)\n  \},", body, re.S):
+            block = m.group(2)
+            rows = re.findall(r"\[\s*((?:\"[^\"]+\",?\s*)+)\]", block)
+            _CUSTOM_ANIMS[m.group(1)] = {
+                "frameSize": int(re.search(r"frameSize:\s*(\d+)", block).group(1)),
+                "single": "sourceSingleAnimation: true" in block,
+                "frames": [re.findall(r"\"([^\"]+)\"", r) for r in rows],
+            }
+    return _CUSTOM_ANIMS
+
+
+def _extract_frames(dest, spec, src, src_frame):
+    """Copia quadros de uma animação normal (4 linhas n/w/s/e) para o layout especial,
+    centralizando quando o quadro de destino é maior (ex.: 64px dentro de 128px)."""
+    size = spec["frameSize"]
+    off = (size - src_frame) // 2
+    for i, row in enumerate(spec["frames"]):
+        for j, cell in enumerate(row):
+            name, col = cell.split(",")
+            r = "nwse".index(name.split("-")[1])
+            frame = src.crop((src_frame * int(col), src_frame * r,
+                              src_frame * (int(col) + 1), src_frame * (r + 1)))
+            dest.alpha_composite(frame, (size * j + off, size * i + off))
+
+
+def _render_custom(name, layers, body):
+    spec = _custom_animations().get(name)
+    if not spec:
+        return None, set()
+    base_anim = spec["frames"][0][0].split(",")[0].split("-")[0]
+    size = spec["frameSize"]
+    sheet = Image.new("RGBA", (size * len(spec["frames"][0]), size * len(spec["frames"])))
+    drawn = set()
+    for _, _, d, layer, it in layers:
+        path = layer.get(body)
+        if not path or layer.get("is_mask"):
+            continue
+        custom = layer.get("custom_animation")
+        if custom == name:
+            img = _item_file(d, it, path)
+            if img is None:
+                continue
+            if spec["single"]:
+                _extract_frames(sheet, spec, img, img.height // 4)
+            else:
+                sheet.alpha_composite(img.crop((0, 0, sheet.width, sheet.height)))
+        elif not custom:
+            img = _item_file(d, it, path, base_anim)
+            if img is None:
+                continue
+            _extract_frames(sheet, spec, img, 64)
+        else:
+            continue
+        drawn.add(it["id"])
+    return sheet, drawn
 
 
 # ---------- ferramentas MCP ----------
@@ -178,7 +283,18 @@ def get_item(item_id: str) -> dict:
     entries = _recolor_entries(d)
     if entries:
         info["colors"] = sorted(_colors_for(entries[0]))
-        info["default_color"] = entries[0].get("base") or _material_base(entries[0]["material"])
+        info["default_color"] = _default_color(entries[0])
+    if len(entries) > 1:
+        # passe "color": [cor_parte_1, cor_parte_2, ...]
+        info["color_parts"] = [{"label": e.get("label") or e.get("type_name") or d.get("type_name"),
+                                "default": _default_color(e), "colors": sorted(_colors_for(e))}
+                               for e in entries]
+    if d.get("match_body_color"):
+        info["match_body_color"] = True
+    specials = sorted({v["custom_animation"] for k, v in d.items()
+                       if k.startswith("layer_") and v.get("custom_animation")})
+    if specials:
+        info["special_animations"] = specials
     return info
 
 
@@ -187,27 +303,45 @@ def generate_character(items: list[dict], body_type: str = "male",
                        animations: list[str] | None = None, filename: str = "character.png") -> dict:
     """Gera a spritesheet do personagem e salva em PNG.
 
-    items: lista de {"id": "<item id>", "color": "<cor opcional>", "variant": "<variante opcional>"}.
-           Inclua um corpo (ex.: body/body) e uma cabeça (ex.: head/heads/heads_human_male).
+    items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
+           Inclua um corpo (body/body) e uma cabeça (ex.: head/heads/human/heads_human_male).
+           Itens de pele (cabeça, orelhas, nariz...) sem cor herdam a cor do corpo.
+           Itens com várias partes (ver `color_parts` em get_item) aceitam uma lista de cores.
     body_type: male | female | muscular | pregnant | teen | child
-    animations: subconjunto de walk, idle, slash, thrust, spellcast, shoot, hurt, run, jump... (padrão: todas)
+    animations: subconjunto de walk, idle, slash, thrust, spellcast, shoot, hurt, run, jump... (padrão: todas).
+           Animações especiais de armas/ferramentas (ex.: slash_128, tool_hammer) entram
+           automaticamente quando a animação base delas (slash, thrust...) é pedida.
     """
     anims = animations or ANIMATIONS
-    layers = []  # (zPos, ordem, item, layer)
-    for n, it in enumerate(items):
-        d = ITEMS.get(it["id"])
-        if d is None:
+    for it in items:
+        if it["id"] not in ITEMS:
             return {"error": f"item desconhecido: {it['id']}"}
+
+    # cor da pele: itens com match_body_color sem cor herdam a cor do corpo
+    skin = next((it.get("color") for it in items
+                 if ITEMS[it["id"]].get("match_body_color") and it.get("color")), None)
+    items = [dict(it, color=skin) if skin and not it.get("color")
+             and ITEMS[it["id"]].get("match_body_color") else it for it in items]
+
+    layers = []  # (zPos, ordem, item, layer, pedido)
+    for n, it in enumerate(items):
+        d = ITEMS[it["id"]]
         for k, v in d.items():
             if k.startswith("layer_"):
                 layers.append((v.get("zPos", 0), n, d, v, it))
     layers.sort(key=lambda t: (t[0], t[1]))
 
     rows, missing = [], {}
+
+    def note_missing(anim, drawn, only=None):
+        for it in items:
+            if it["id"] not in drawn and (only is None or it["id"] in only):
+                missing.setdefault(it["id"], []).append(anim)
+
     for anim in anims:
         sheet, drawn = None, set()
         for _, _, d, layer, it in layers:
-            img = _layer_image(d, layer, body_type, anim, it.get("variant"), [it.get("color")])
+            img = _layer_image(d, layer, body_type, anim, it.get("variant"), _color_list(it))
             if img is None:
                 continue
             drawn.add(it["id"])
@@ -219,20 +353,32 @@ def generate_character(items: list[dict], body_type: str = "male",
                 sheet = grown
             sheet.alpha_composite(img, (0, 0))
         if sheet is not None:
-            rows.append((anim, sheet))
-            for it in items:
-                if it["id"] not in drawn:
-                    missing.setdefault(it["id"], []).append(anim)
+            rows.append((anim, sheet, 64))
+            # itens que só têm animação especial nessa base não contam como faltando aqui
+            special = {it["id"] for _, _, _, l, it in layers
+                       if l.get("custom_animation") and l.get(body_type)
+                       and _custom_base(l["custom_animation"]) == anim}
+            note_missing(anim, drawn | special)
+
+    customs = []
+    for _, _, _, layer, _ in layers:
+        name = layer.get("custom_animation")
+        if name and layer.get(body_type) and name not in customs and _custom_base(name) in anims:
+            customs.append(name)
+    for name in customs:
+        sheet, _ = _render_custom(name, layers, body_type)
+        if sheet is not None:
+            rows.append((name, sheet, _custom_animations()[name]["frameSize"]))
 
     if not rows:
         return {"error": "nenhuma camada encontrada para essa combinação"}
-    w = max(s.width for _, s in rows)
-    h = sum(s.height for _, s in rows)
+    w = max(s.width for _, s, _ in rows)
+    h = sum(s.height for _, s, _ in rows)
     final = Image.new("RGBA", (w, h))
     y, index = 0, {}
-    for anim, s in rows:
+    for anim, s, frame in rows:
         final.paste(s, (0, y))
-        index[anim] = {"y": y, "height": s.height}
+        index[anim] = {"y": y, "height": s.height, "frame": frame}
         y += s.height
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / filename
@@ -243,6 +389,10 @@ def generate_character(items: list[dict], body_type: str = "male",
         result["missing"] = missing
     return result
 
+
+def _custom_base(name):
+    spec = _custom_animations().get(name)
+    return spec["frames"][0][0].split(",")[0].split("-")[0] if spec else None
 
 if __name__ == "__main__":
     mcp.run()
