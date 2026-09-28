@@ -50,7 +50,8 @@ mcp = MCPServer(
         "animações (search_items mostra 'complete' e lista os completos primeiro). Depois de "
         "generate_character, SEMPRE leia 'animation_check': se complete=false, avise o usuário "
         "quais itens não têm quais animações e ofereça as alternativas completas ou gerar de "
-        "novo com prefer_complete=True. Armas e ferramentas só aparecem nas animações delas "
+        "novo com prefer_complete=True. Não use prefer_complete sem o usuário pedir ou "
+        "concordar, porque ele troca peças e muda o visual. Armas e ferramentas só aparecem nas animações delas "
         "(equipment_only_in) — isso é normal. Use preview_character para mostrar o resultado."
     ),
 )
@@ -611,6 +612,7 @@ def generate_character(items: list[dict], body_type: str = "male",
     se não, quais faltam e alternativas completas. AVISE o usuário quando complete=false.
     prefer_complete=True troca sozinho itens incompletos pelo parecido mais próximo que
     tem todas as animações (mantendo a cor quando dá) e lista as trocas em `replaced`.
+    Só use com o aval do usuário: a troca muda o visual (ex.: avental vira macacão).
 
     items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
            Inclua um corpo (body/body) e uma cabeça (ex.: head/heads/human/heads_human_male).
@@ -831,6 +833,19 @@ def _compose(items, body_type, animations=None, inherit_from=None):
 
     if not rows:
         return {"error": "nenhuma camada encontrada para essa combinação"}
+    # mesmo critério do animation_check: equipamentos (armas, ferramentas) e faltas
+    # intencionais (ex.: barba ao escalar, de costas) não são aviso
+    for item_id, lacking in list(missing.items()):
+        if is_equipment(item_id):
+            del missing[item_id]
+            continue
+        intentional = set().union(*(gaps for prefixes, gaps in INTENTIONAL_GAPS
+                                    if item_id.startswith(prefixes)))
+        lacking = [a for a in lacking if a not in intentional]
+        if lacking:
+            missing[item_id] = lacking
+        else:
+            del missing[item_id]
     # aviso curto: se o item falta na maioria, diz só onde ele aparece
     for item_id, lacking in list(missing.items()):
         present = drawn_in.get(item_id, [])

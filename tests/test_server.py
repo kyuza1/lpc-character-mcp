@@ -73,8 +73,9 @@ def test_gera_elfa_completa():
     assert r["animations"]["walk_128"]["frame"] == 128
     assert img.height == sum(a["height"] for a in r["animations"].values())
     # sem arte no repositório: túnica e arco em "idle" — deve ser avisado
-    assert r["missing"] == {"torso/shirts/torso_clothes_tunic": ["idle"],
-                            "weapons/ranged/bow/weapon_ranged_bow_normal": ["idle"]}
+    # a túnica não tem idle; o arco é equipamento e aparece em equipment_only_in
+    assert r["missing"] == {"torso/shirts/torso_clothes_tunic": ["idle"]}
+    assert "weapons/ranged/bow/weapon_ranged_bow_normal" in r["animation_check"]["equipment_only_in"]
 
 
 def test_masculino_avisa_item_so_feminino():
@@ -293,7 +294,18 @@ def test_item_repetido_do_mesmo_tipo_substitui():
 
 def test_aviso_curto_de_item_faltando():
     r = s.generate_character(FERREIRO, filename="curto.png")
-    assert r["missing"]["tools/tool_hammer"] == {"only_in": ["walk", "slash"]}
+    # o avental falta na maioria: aviso curto dizendo onde ele aparece
+    assert r["missing"]["torso/aprons/torso_aprons_apron"] == {
+        "only_in": ["spellcast", "thrust", "walk", "slash", "shoot", "hurt"]}
+    # martelo é equipamento: não entra em missing
+    assert "tools/tool_hammer" not in r["missing"]
+
+
+def test_faltas_intencionais_fora_do_missing():
+    r = s.generate_character([{"id": "body/body"}, {"id": "head/heads/human/heads_human_male"},
+                              {"id": "hair/beards/beards_trimmed"}], filename="barba.png")
+    assert "hair/beards/beards_trimmed" not in r.get("missing", {})
+    assert r["animation_check"]["complete"] is True
 
 
 def test_downloads_em_paralelo(monkeypatch):
@@ -469,5 +481,5 @@ def test_demo_web_avisa_itens_faltando(tmp_path):
     import json
     s.generate_character(FERREIRO, filename="dw.png", export=["web"])
     atlas = json.loads((tmp_path / "dw.json").read_text(encoding="utf8"))
-    assert "Apron" in atlas["meta"]["missing"]["idle"]
+    assert atlas["meta"]["missing"]["idle"] == ["Apron"]  # martelo (equipamento) não entra
     assert "Apron" not in atlas["meta"]["missing"].get("walk", [])
