@@ -271,7 +271,7 @@ def test_todas_as_ferramentas_registradas():
     nomes = {t.name for t in asyncio.run(s.mcp.list_tools())}
     assert nomes == {"list_categories", "search_items", "get_item", "generate_character",
                      "preview_character", "random_character", "generate_batch",
-                     "from_site_url", "to_site_url", "update_definitions"}
+                     "from_site_url", "to_site_url", "update_definitions", "clear_cache"}
 
 
 # ---------- ajustes de uso ----------
@@ -553,3 +553,18 @@ def test_unity_gera_controller_com_todos_os_clipes(tmp_path):
         guid = re.search(r"guid: (\w+)", meta).group(1)
         assert f"guid: {guid}, type: 2" in ctrl
     assert "mainObjectFileID: 9100000" in (tmp_path / "uc.controller.meta").read_text(encoding="utf8")
+
+
+# ---------- cache ----------
+def test_limpa_cache(tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    (cache / "body" / "x").mkdir(parents=True)
+    (cache / "body" / "x" / "walk.png").write_bytes(b"x" * 2048)
+    (cache / "_files_abc.txt").write_text("lista")
+    monkeypatch.setattr(s, "CACHE", cache)
+    previa = s.clear_cache(dry_run=True)
+    assert previa["files"] == 1 and (cache / "body" / "x" / "walk.png").exists()
+    r = s.clear_cache()
+    assert r["files"] == 1 and not (cache / "body").exists()
+    assert (cache / "_files_abc.txt").exists()  # arquivos internos ficam
+    assert "clear_cache" in {t.name for t in asyncio.run(s.mcp.list_tools())}

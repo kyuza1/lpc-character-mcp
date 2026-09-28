@@ -91,6 +91,8 @@ lpc-character-mcp --setup
 E registre o comando `lpc-character-mcp` (sem argumentos) no seu assistente.
 
 ### Dicas
+- **Liberar espaço:** `lpc-character-mcp --clear-cache` apaga as imagens em cache
+  (`--clear-cache 30` só as sem uso há 30 dias).
 - **Atualizar para a versão mais nova:** `uvx --refresh --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp --version`
 - **`uvx` não encontrado pelo app:** use o caminho completo (`where uvx` no Windows,
   `which uvx` no macOS/Linux).
@@ -115,6 +117,7 @@ E registre o comando `lpc-character-mcp` (sem argumentos) no seu assistente.
 | `generate_batch(count, body_types, seed, prefix, fixed_items, ...)` | Gera vários NPCs aleatórios |
 | `from_site_url(url)` / `to_site_url(items, body_type)` | Lê / monta links do site do gerador (inclusive links antigos) |
 | `update_definitions(clear_image_cache)` | Atualiza itens e paletas do repositório oficial |
+| `clear_cache(older_than_days, dry_run)` | Apaga as imagens baixadas em cache (ou só as sem uso há N dias) |
 
 Exemplo de `items`:
 ```json
@@ -136,6 +139,11 @@ Exemplo de `items`:
   cinto...). As partes aparecem em `color_parts` no `get_item`; `null` mantém a cor padrão.
 - Cabeça, orelhas, nariz e outros itens de pele sem cor herdam a cor do corpo.
 - Um item por tipo, como no site: pedir dois cabelos mantém o último (e avisa em `warnings`).
+
+### Onde salvar
+`output_dir` salva direto numa pasta — por exemplo a de sprites do seu jogo:
+"gera o ferreiro em C:/meu-jogo/art/npcs com export godot". Sem ele, vai para
+`LPC_OUTPUT_DIR` ou `~/lpc-characters`.
 
 ### Layout e partes
 - `layout: "standard"` (padrão) — igual ao site: 832px de largura, cada animação sempre na
@@ -186,9 +194,9 @@ Passe `export` no `generate_character` (pode combinar vários):
 
 | `export` | Arquivos | Como usar |
 |---|---|---|
-| `"godot"` | `<nome>.tres` (SpriteFrames) | Copie `<nome>.png` e `<nome>.tres` para `res://characters/` e use o `.tres` em **Sprite Frames** de um `AnimatedSprite2D`. Animações: `walk_down`, `idle_left`, `tool_hammer_right`... Testado no Godot 4.6. |
-| `"unity"` | `<nome>.png.meta` + `<nome>_unity_anims/*.anim` | Copie o PNG, o `.meta` e a pasta para `Assets/`. Os sprites já vêm fatiados (Sprite Mode Multiple, filtro Point, sem compressão) e cada `.anim` vai direto num Animator com SpriteRenderer. Testado no Unity 6. |
-| `"web"` | `<nome>.json` (atlas) + `<nome>_demo.html` | Atlas no formato TexturePacker (hash) com `animations`: Phaser 3 `this.load.atlas(...)`, PixiJS `Assets.load(...)`. A demo toca o personagem com setas/WASD, Shift e Espaço — abra por um servidor local (`python -m http.server`). |
+| `"godot"` | `<nome>.tres` (SpriteFrames) | Gere com `output_dir` dentro do projeto (o caminho `res://` sai certo sozinho) ou copie `<nome>.png` e `<nome>.tres` para `res://characters/`. Use o `.tres` em **Sprite Frames** de um `AnimatedSprite2D`. Animações: `walk_down`, `idle_left`, `tool_hammer_right`... Testado no Godot 4.6. |
+| `"unity"` | `<nome>.png.meta`, `<nome>.controller` + `<nome>_unity_anims/*.anim` | Gere com `output_dir` dentro de `Assets/` (ou copie tudo para lá). Os sprites já vêm fatiados (Sprite Mode Multiple, filtro Point, sem compressão) e o `.controller` tem um estado por animação (começa em `idle_down`): ponha no Animator de um objeto com SpriteRenderer e use `animator.Play("walk_left")`. Testado no Unity 6. |
+| `"web"` | `<nome>.json` (atlas) + `<nome>_demo.html` | Atlas no formato TexturePacker (hash) com `animations`: Phaser 3 `this.load.atlas(...)`, PixiJS `Assets.load(...)`. Testado no Phaser 3.80 e PixiJS 8.5. A demo toca o personagem com setas/WASD, Shift e Espaço — abra por um servidor local (`python -m http.server`). |
 | `"site"` | `<nome>_site.json` | Cole no botão **Import from Clipboard (JSON)** do site do gerador para continuar editando lá. |
 
 ## Créditos das artes

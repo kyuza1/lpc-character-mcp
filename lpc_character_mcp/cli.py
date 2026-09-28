@@ -10,6 +10,7 @@ Uso:
   lpc-character-mcp            inicia o servidor MCP (stdio) — é isso que o cliente chama
   lpc-character-mcp --setup    baixa as definições dos itens e sai (rode uma vez ao instalar)
   lpc-character-mcp --where    mostra onde ficam os dados, o cache e os personagens gerados
+  lpc-character-mcp --clear-cache [dias]   apaga as imagens em cache (ou só as sem uso há N dias)
   lpc-character-mcp --version
 
 Variáveis de ambiente:
@@ -32,6 +33,13 @@ def main(argv=None):
         print(f"definições:  {DATA / 'lpc' / 'sheet_definitions'}")
         print(f"cache:       {DATA / 'cache'}")
         print(f"personagens: {OUT}")
+    elif "--clear-cache" in args:
+        from .server import clear_cache
+        rest = args[args.index("--clear-cache") + 1:]
+        days = int(rest[0]) if rest and rest[0].isdigit() else 0
+        r = clear_cache(days)
+        print(f"{r['files']} arquivos apagados, {r['freed_mb']} MB liberados "
+              f"(cache agora: {r['cache_now_mb']} MB em {r['cache_dir']})")
     elif "--setup" in args:
         from .server import DEFS, ITEMS, OUT, _custom_animations, _sprite_files
         # as definições já foram baixadas na importação; prepara a lista de arquivos e as

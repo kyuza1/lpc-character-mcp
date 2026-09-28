@@ -1298,6 +1298,34 @@ def preview_character(items: list[dict], body_type: str = "male", animation: str
     return [MCPImage(data=buf.getvalue(), format=fmt), json.dumps(note, ensure_ascii=False)]
 
 
+# ---------- cache ----------
+def _cache_images():
+    """PNGs baixados no cache (sem os arquivos internos que começam com _)."""
+    if not CACHE.exists():
+        return []
+    return [p for p in CACHE.rglob("*") if p.is_file() and not p.relative_to(CACHE).parts[0].startswith("_")]
+
+
+@mcp.tool()
+def clear_cache(older_than_days: int = 0, dry_run: bool = False) -> dict:
+    """Apaga as imagens baixadas em cache (elas são baixadas de novo quando precisar).
+    older_than_days: só apaga as que não são usadas há mais de N dias (0 = todas).
+    dry_run: só mostra quanto seria liberado, sem apagar."""
+    import time
+    limit = time.time() - older_than_days * 86400
+    files = [p for p in _cache_images() if not older_than_days or p.stat().st_atime < limit]
+    size = sum(p.stat().st_size for p in files)
+    if not dry_run:
+        for p in files:
+            p.unlink(missing_ok=True)
+        for d in sorted((d for d in CACHE.rglob("*") if d.is_dir()), key=lambda d: len(d.parts), reverse=True):
+            if not any(d.iterdir()):
+                d.rmdir()
+    remaining = sum(p.stat().st_size for p in _cache_images())
+    return {"files": len(files), "freed_mb" if not dry_run else "would_free_mb": round(size / 2**20, 1),
+            "cache_now_mb": round(remaining / 2**20, 1), "cache_dir": str(CACHE)}
+
+
 # ---------- atualização ----------
 @mcp.tool()
 def update_definitions(clear_image_cache: bool = False) -> dict:
