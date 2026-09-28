@@ -58,8 +58,7 @@ def _ensure_definitions():
         run("git", "sparse-checkout", "set", "sheet_definitions", "palette_definitions", cwd=REPO)
     except subprocess.CalledProcessError as e:
         shutil.rmtree(REPO, ignore_errors=True)  # não deixa um clone pela metade
-        sys.exit(f"lpc-mcp: falha ao baixar as definições do GitHub (verifique a internet).
-{e.stderr}")
+        sys.exit(f"lpc-mcp: falha ao baixar as definições do GitHub (verifique a internet).\n{e.stderr}")
 
 
 _ensure_definitions()
