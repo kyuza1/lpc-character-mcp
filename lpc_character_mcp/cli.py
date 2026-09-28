@@ -41,7 +41,9 @@ def main(argv=None):
         print(f"{r['files']} arquivos apagados, {r['freed_mb']} MB liberados "
               f"(cache agora: {r['cache_now_mb']} MB em {r['cache_dir']})")
     elif "--setup" in args:
-        from .server import DEFS, ITEMS, OUT, _custom_animations, _sprite_files
+        from .catalog import DEFS, ITEMS, _sprite_files
+        from .paths import OUT
+        from .render import _custom_animations
         # as definições já foram baixadas na importação; prepara a lista de arquivos e as
         # animações especiais para o primeiro uso ser rápido
         _sprite_files()

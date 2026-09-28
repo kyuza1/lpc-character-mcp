@@ -624,3 +624,17 @@ def test_reload_do_catalogo_mantem_o_mesmo_dicionario():
 def test_lote_com_corpo_invalido_informa_erro():
     r = s.generate_batch(2, body_types=["robot"], seed=1, animations=["walk"])
     assert r["count"] == 2 and all("error" in c for c in r["characters"])
+
+
+# ---------- linha de comando ----------
+@pytest.mark.parametrize("flag, texto", [
+    (["--version"], "lpc-character-mcp 0."),
+    (["--help"], "--setup"),
+    (["--where"], "personagens:"),
+    (["--setup"], "lpc-character-mcp pronto:"),
+    (["--clear-cache", "9999"], "arquivos apagados"),
+])
+def test_cli(flag, texto, capsys):
+    from lpc_character_mcp import cli
+    cli.main(flag)
+    assert texto in capsys.readouterr().out
