@@ -24,6 +24,8 @@ A prévia no chat (`preview_character`) é um GIF animado — aqui, o ferreiro m
 
 ## Instalação
 
+![Instalando no terminal: setup, registro no Claude Code, conectado](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/install_pt.gif)
+
 Precisa de **[uv](https://docs.astral.sh/uv/getting-started/installation/)** e **Git**.
 O uv baixa o Python certo e o pacote sozinho — não precisa clonar nada nem instalar
 dependências.

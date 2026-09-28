@@ -28,6 +28,8 @@ The in-chat preview (`preview_character`) is an animated GIF — here a blacksmi
 
 ## Installation
 
+![Installing in a terminal: setup, register in Claude Code, connected](https://raw.githubusercontent.com/kyuza1/lpc-character-mcp/main/docs/install.gif)
+
 You need **[uv](https://docs.astral.sh/uv/getting-started/installation/)** and **Git**.
 uv fetches the right Python and the package by itself — nothing to clone, no
 dependencies to install.
