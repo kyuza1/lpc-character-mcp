@@ -63,7 +63,16 @@ Exemplo de `items`:
 A imagem sai em `output/` (ou em `LPC_OUTPUT_DIR`), com quadros de 64×64 e
 cada animação empilhada verticalmente (4 linhas: cima, esquerda, baixo, direita).
 
+## Testes
+```
+pip install pytest
+python -m pytest -q
+```
+
 ## Limitações
+- Nem todo item tem arte para todas as animações/corpos (ex.: a túnica só existe
+  no corpo feminino e não tem "idle"; o arco só aparece em "shoot"). Nesses casos o
+  resultado traz um campo `missing` dizendo o que ficou de fora.
 - Itens com várias cores usam só a primeira cor.
 - Animações de arma "oversize" (golpe grande de 128/192px) ainda não são incluídas.
 
