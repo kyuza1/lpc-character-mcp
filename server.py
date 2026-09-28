@@ -8,6 +8,7 @@ import io
 import json
 import os
 import re
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -475,6 +476,128 @@ def _write_credits(credits, base):
 def _custom_base(name):
     spec = _custom_animations().get(name)
     return spec["frames"][0][0].split(",")[0].split("-")[0] if spec else None
+
+# ---------- links do site ----------
+SITE = "https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/"
+
+
+def _norm(v):
+    return urllib.parse.unquote(v).replace(" ", "_").lower()
+
+
+def _by_type():
+    out = {}
+    for item_id, d in ITEMS.items():
+        out.setdefault(d.get("type_name"), []).append(item_id)
+    return out
+
+
+def _sub_parts():
+    """type_name de partes extras (color_2...) -> [(item_id, índice da parte)]."""
+    out = {}
+    for item_id, d in ITEMS.items():
+        for n, e in enumerate(_recolor_entries(d)):
+            if n and e.get("type_name"):
+                out.setdefault(e["type_name"], []).append((item_id, n))
+    return out
+
+
+def _match_param(type_name, value, by_type):
+    """Mesmo algoritmo do site: tenta 'Nome' + '_variante' com cortes crescentes."""
+    parts = value.split("_")
+    for i in range(1, len(parts) + 1):
+        name, rest = "_".join(parts[:i]), "_".join(parts[i:])
+        variant, _, recolor = rest.partition("|")
+        for item_id in by_type.get(type_name, []):
+            d = ITEMS[item_id]
+            if d.get("name", "").replace(" ", "_").lower() != name.lower():
+                continue
+            for v in d.get("variants") or []:
+                if _norm(v) == _norm(variant):
+                    return {"id": item_id, "variant": v}
+            entries = _recolor_entries(d)
+            if entries:
+                want = _norm(recolor or variant)
+                for c in _colors_for(entries[0]):
+                    if _norm(c) == want:
+                        return {"id": item_id, "color": c}
+            if not variant:
+                return {"id": item_id}
+    return None
+
+
+def parse_url(url: str) -> dict:
+    frag = url.split("#", 1)[1] if "#" in url else url
+    params = [p.split("=", 1) for p in frag.split("&") if "=" in p]
+    by_type, subs = _by_type(), _sub_parts()
+    body, items, unresolved, extras = "male", [], {}, []
+    for key, value in params:
+        if key in ("sex", "bodyType"):
+            body = value
+        elif key in by_type:
+            it = _match_param(key, value, by_type)
+            if it:
+                items.append(it)
+            else:
+                unresolved[key] = value
+        elif key in subs:
+            extras.append((key, value))
+        else:
+            unresolved[key] = value
+    # cores de partes extras (ex.: handle=Grip_oak)
+    for key, value in extras:
+        for it in items:
+            for item_id, n in subs[key]:
+                if it["id"] == item_id:
+                    cols = _color_list(it)
+                    cols += [None] * (n + 1 - len(cols))
+                    # valor = "<Rótulo>_<cor>"; a cor pode ter "_" (dark_brown)
+                    match = [c for c in _colors_for(_recolor_entries(ITEMS[item_id])[n])
+                             if _norm(value).endswith("_" + _norm(c)) or _norm(value) == _norm(c)]
+                    cols[n] = max(match, key=len) if match else None
+                    it["color"] = cols
+    result = {"body_type": body, "items": items}
+    if unresolved:
+        result["unresolved"] = unresolved
+    return result
+
+
+def build_url(items: list[dict], body_type: str = "male") -> str:
+    params = [("sex", body_type)]
+    for it in items:
+        d = ITEMS[it["id"]]
+        cols = _color_list(it)
+        entries = _recolor_entries(d)
+        value = d["name"].replace(" ", "_")
+        if d.get("variants"):
+            v = it.get("variant") or (cols[0] if cols[0] in d["variants"] else d["variants"][0])
+            value += "_" + v.replace(" ", "_")
+        elif entries:
+            value += "_" + (cols[0] or _default_color(entries[0]))
+        params.append((d["type_name"], value))
+        for n, e in enumerate(entries[1:], start=1):
+            if n < len(cols) and cols[n] and e.get("type_name"):
+                label = (e.get("label") or e["type_name"]).replace(" ", "_")
+                params.append((e["type_name"], f"{label}_{cols[n]}"))
+    return SITE + "#" + "&".join(f"{k}={urllib.parse.quote(v, safe='_|-')}" for k, v in params)
+
+
+@mcp.tool()
+def from_site_url(url: str) -> dict:
+    """Lê um link do gerador LPC (ex.: ...Character-Generator/#sex=male&body=Body_Color_light&...)
+    e devolve {body_type, items} prontos para generate_character.
+    Parâmetros que não foram reconhecidos aparecem em `unresolved`."""
+    return parse_url(url)
+
+
+@mcp.tool()
+def to_site_url(items: list[dict], body_type: str = "male") -> str:
+    """Monta o link do site com esses itens, para abrir e ajustar o personagem no navegador."""
+    for it in items:
+        if it["id"] not in ITEMS:
+            raise ValueError(f"item desconhecido: {it['id']}")
+    return build_url(items, body_type)
+
 
 if __name__ == "__main__":
     mcp.run()

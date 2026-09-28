@@ -176,3 +176,32 @@ def test_creditos_so_das_artes_usadas(tmp_path):
     assert (tmp_path / "cr_credits.csv").read_text(encoding="utf8").startswith("file,notes,authors")
     # item não usado não entra
     assert "hair/" not in txt
+
+
+URL = ("https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/"
+       "#sex=male&body=Body_Color_light&head=Human_Male_light&expression=Neutral_light")
+
+
+def test_le_link_do_site():
+    r = s.from_site_url(URL)
+    assert r["body_type"] == "male"
+    assert r["items"] == [{"id": "body/body", "color": "light"},
+                          {"id": "head/heads/human/heads_human_male", "color": "light"},
+                          {"id": "head/faces/face_neutral", "color": "light"}]
+    assert "unresolved" not in r
+
+
+def test_link_ida_e_volta_com_variante_e_varias_cores():
+    items = [{"id": "body/body", "color": "bronze"},
+             {"id": "hair/short/hair_plain", "color": "dark_brown"},
+             {"id": "torso/aprons/torso_aprons_apron", "variant": "leather"},
+             {"id": "tools/tool_hammer", "color": ["gold", "walnut"]}]
+    url = s.to_site_url(items, "female")
+    assert "apron=Apron_leather" in url and "handle=Handle_walnut" in url
+    r = s.from_site_url(url)
+    assert r["body_type"] == "female" and r["items"] == items
+
+
+def test_link_com_parametro_desconhecido():
+    r = s.from_site_url(URL + "&foo=Bar_baz")
+    assert r["unresolved"] == {"foo": "Bar_baz"}
