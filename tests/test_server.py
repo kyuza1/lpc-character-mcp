@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from PIL import Image
 
+from lpc_character_mcp import links, render
 from lpc_character_mcp import server as s
 
 ELFA = [
@@ -57,8 +58,8 @@ def test_recolor_troca_cor_do_cabelo():
 def test_color_escolhe_variante():
     d = s.ITEMS["torso/shirts/torso_clothes_tunic"]
     layer = d["layer_1"]
-    verde = s._layer_image(d, layer, "female", "walk", None, ["forest"])
-    vermelha = s._layer_image(d, layer, "female", "walk", None, ["red"])
+    verde = render._layer_image(d, layer, "female", "walk", None, ["forest"])
+    vermelha = render._layer_image(d, layer, "female", "walk", None, ["red"])
     assert verde.tobytes() != vermelha.tobytes()
 
 
@@ -147,13 +148,13 @@ def test_layout_padrao_igual_ao_site():
     assert r["layout"] == "standard"
     a = r["animations"]
     assert a["walk"]["y"] == 8 * 64 and a["slash"]["y"] == 12 * 64
-    assert a["tool_hammer"]["y"] == s.SHEET_HEIGHT
-    assert r["size"] == [9 * 128, s.SHEET_HEIGHT + 4 * 128]
+    assert a["tool_hammer"]["y"] == render.SHEET_HEIGHT
+    assert r["size"] == [9 * 128, render.SHEET_HEIGHT + 4 * 128]
 
 
 def test_layout_padrao_sem_especiais_tem_tamanho_do_site():
     r = s.generate_character(FERREIRO[:2], filename="p2.png")
-    assert r["size"] == [s.SHEET_WIDTH, s.SHEET_HEIGHT]
+    assert r["size"] == [render.SHEET_WIDTH, render.SHEET_HEIGHT]
 
 
 def test_layout_invalido():
@@ -161,7 +162,7 @@ def test_layout_invalido():
 
 
 def test_split_salva_animacoes_separadas(tmp_path):
-    r = s.generate_character(FERREIRO, animations=["walk", "slash"], filename="sp.png", split=True)
+    s.generate_character(FERREIRO, animations=["walk", "slash"], filename="sp.png", split=True)
     nomes = {p.name for p in (tmp_path / "sp_anims").iterdir()}
     assert nomes == {"walk.png", "slash.png", "tool_hammer.png"}
     assert Image.open(tmp_path / "sp_anims" / "tool_hammer.png").size == (9 * 128, 4 * 128)
@@ -216,7 +217,7 @@ def test_personagem_aleatorio_repetivel():
     assert ids[0] == "body/body" and any(i.startswith("head/heads/human/") for i in ids)
     assert any(i.startswith("torso/") for i in ids) and any(i.startswith("legs/") for i in ids)
     assert all(s._supports(i, "female") for i in ids[1:])
-    assert a["url"].startswith(s.SITE)
+    assert a["url"].startswith(links.SITE)
 
 
 def test_aleatorio_com_item_fixo():
@@ -310,7 +311,7 @@ def test_faltas_intencionais_fora_do_missing():
 
 def test_downloads_em_paralelo(monkeypatch):
     chamadas = []
-    monkeypatch.setattr(s, "_prefetch", lambda rels: chamadas.append(len(rels)))
+    monkeypatch.setattr(render, "_prefetch", lambda rels: chamadas.append(len(rels)))
     s.generate_character(FERREIRO, animations=["walk", "slash"], filename="par.png")
     assert chamadas and chamadas[0] > 4
 
@@ -346,7 +347,7 @@ def test_exporta_godot(tmp_path):
 
 
 def test_exporta_unity(tmp_path):
-    r = s.generate_character(FERREIRO, animations=["walk"], filename="u.png", export=["unity"])
+    s.generate_character(FERREIRO, animations=["walk"], filename="u.png", export=["unity"])
     meta = (tmp_path / "u.png.meta").read_text(encoding="utf8")
     assert "spriteMode: 2" in meta and "filterMode: 0" in meta and "walk_down_0:" in meta
     anim = (tmp_path / "u_unity_anims" / "walk_down.anim").read_text(encoding="utf8")
@@ -536,7 +537,7 @@ def test_godot_fora_de_projeto_usa_padrao(tmp_path):
 
 
 def test_lote_com_output_dir(tmp_path):
-    r = s.generate_batch(2, seed=1, animations=["walk"], layout="compact", output_dir=str(tmp_path / "vila"))
+    s.generate_batch(2, seed=1, animations=["walk"], layout="compact", output_dir=str(tmp_path / "vila"))
     assert all((tmp_path / "vila" / f"npc_0{n}.png").exists() for n in (1, 2))
 
 
@@ -568,3 +569,58 @@ def test_limpa_cache(tmp_path, monkeypatch):
     assert r["files"] == 1 and not (cache / "body").exists()
     assert (cache / "_files_abc.txt").exists()  # arquivos internos ficam
     assert "clear_cache" in {t.name for t in asyncio.run(s.mcp.list_tools())}
+
+
+# ---------- atualização e lote ----------
+def _git(*args, cwd):
+    import subprocess
+    return subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=cwd,
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def _repos(tmp_path):
+    """Um "origin" com 2 commits e um clone parado no 1º (definições desatualizadas)."""
+    origin, local = tmp_path / "origin", tmp_path / "local"
+    origin.mkdir()
+    _git("init", "-q", "-b", "master", cwd=origin)
+    _git("commit", "-q", "--allow-empty", "-m", "v1", cwd=origin)
+    _git("clone", "-q", str(origin), str(local), cwd=tmp_path)
+    _git("commit", "-q", "--allow-empty", "-m", "v2", cwd=origin)
+    return origin, local
+
+
+def test_update_definitions_atualiza(tmp_path, monkeypatch):
+    origin, local = _repos(tmp_path)
+    recargas = []
+    monkeypatch.setattr(s, "REPO", local)
+    monkeypatch.setattr(s.catalog, "reload", lambda: recargas.append("catalog"))
+    monkeypatch.setattr(s.render, "reset_caches", lambda: recargas.append("render"))
+    r = s.update_definitions()
+    assert r["updated"] is True and r["to"] == _git("rev-parse", "HEAD", cwd=origin)[:10]
+    assert recargas == ["catalog", "render"]
+    # de novo: já está na versão mais nova
+    assert s.update_definitions()["updated"] is False and len(recargas) == 2
+
+
+def test_update_definitions_limpa_imagens_se_pedido(tmp_path, monkeypatch):
+    _, local = _repos(tmp_path)
+    cache = tmp_path / "cache"
+    (cache / "body").mkdir(parents=True)
+    (cache / "body" / "walk.png").write_bytes(b"x")
+    monkeypatch.setattr(s, "REPO", local)
+    monkeypatch.setattr(s, "CACHE", cache)
+    monkeypatch.setattr(s.catalog, "reload", lambda: None)
+    monkeypatch.setattr(s.render, "reset_caches", lambda: None)
+    r = s.update_definitions(clear_image_cache=True)
+    assert r["image_cache_cleared"] is True and not (cache / "body").exists()
+
+
+def test_reload_do_catalogo_mantem_o_mesmo_dicionario():
+    antes = s.ITEMS
+    s.catalog.reload()
+    assert s.ITEMS is antes and "body/body" in antes
+
+
+def test_lote_com_corpo_invalido_informa_erro():
+    r = s.generate_batch(2, body_types=["robot"], seed=1, animations=["walk"])
+    assert r["count"] == 2 and all("error" in c for c in r["characters"])

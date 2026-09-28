@@ -95,7 +95,7 @@ def unity(path, img, index, pixels_per_unit=64):
     tex_guid = _guid(f"lpc-texture:{path.name}")
     clips = frames_of(img, index)
     height = img.height
-    sprites, table, clip_files = [], [], []
+    sprites, table = [], []
     for name, anim, _, cells in clips:
         for i, (x, y, f) in enumerate(cells):
             sname = f"{name}_{i}"
