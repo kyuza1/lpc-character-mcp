@@ -9,26 +9,30 @@ e exporta prontos para **Godot**, **Unity** e **Web** (Phaser/PixiJS).
 Peça em linguagem natural ("gera um ferreiro moreno com avental e martelo") e o
 assistente monta o personagem, mostra uma prévia animada no chat e salva os arquivos.
 
-## Requisitos
-- Python 3.10+
-- Git (usado para baixar as definições dos itens na primeira vez)
-
 ## Instalação
-```
-git clone https://github.com/kyuza1/lpc-character-mcp.git C:\lpc-mcp
-cd C:\lpc-mcp
-pip install -r requirements.txt
-python server.py --setup
-```
-O `--setup` baixa as definições dos itens (~1 min) e sai. Sem ele, isso acontece na
-primeira vez que o assistente abrir o servidor — e alguns clientes desistem antes.
 
-Nos exemplos abaixo troque `C:\lpc-mcp` pela pasta onde você clonou. No macOS/Linux
-use algo como `/home/voce/lpc-mcp/server.py` e, se preciso, `python3`.
+Precisa de **[uv](https://docs.astral.sh/uv/getting-started/installation/)** e **Git**.
+O uv baixa o Python certo e o pacote sozinho — não precisa clonar nada nem instalar
+dependências.
+
+1. Instale o uv (uma vez):
+   - Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
+   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. Prepare o servidor (baixa as definições dos itens, ~10 s, uma vez só):
+   ```
+   uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp --setup
+   ```
+3. Registre no seu assistente (abaixo). Em todos, o comando é o mesmo:
+   `uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp`
+
+Os personagens são salvos em `~/lpc-characters` (no Windows,
+`C:\Users\<você>\lpc-characters`). Para mudar, defina `LPC_OUTPUT_DIR` — por exemplo,
+apontando para a pasta de sprites do seu projeto Godot/Unity. `lpc-character-mcp --where`
+mostra todas as pastas usadas.
 
 ### Claude Code
 ```
-claude mcp add lpc --scope user -- python "C:\lpc-mcp\server.py"
+claude mcp add lpc --scope user -- uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp
 ```
 
 ### Claude Desktop
@@ -37,9 +41,8 @@ Em **Configurações → Desenvolvedor → Editar configuração** (`claude_desk
 {
   "mcpServers": {
     "lpc": {
-      "command": "python",
-      "args": ["C:\\lpc-mcp\\server.py"],
-      "env": { "LPC_OUTPUT_DIR": "C:\\lpc-mcp\\output" }
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/kyuza1/lpc-character-mcp", "lpc-character-mcp"]
     }
   }
 }
@@ -48,17 +51,14 @@ Em **Configurações → Desenvolvedor → Editar configuração** (`claude_desk
 ### Codex (OpenAI)
 Pelo terminal:
 ```
-codex mcp add lpc -- python "C:\lpc-mcp\server.py"
+codex mcp add lpc -- uvx --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp
 ```
 Ou edite `~/.codex/config.toml` (no Windows, `%USERPROFILE%\.codex\config.toml`):
 ```toml
 [mcp_servers.lpc]
-command = "python"
-args = ["C:\\lpc-mcp\\server.py"]
+command = "uvx"
+args = ["--from", "git+https://github.com/kyuza1/lpc-character-mcp", "lpc-character-mcp"]
 startup_timeout_sec = 60
-
-[mcp_servers.lpc.env]
-LPC_OUTPUT_DIR = "C:\\lpc-mcp\\output"
 ```
 Confira com `codex mcp list`. O mesmo arquivo vale para a extensão do Codex no VS Code.
 
@@ -71,20 +71,30 @@ No painel do agente clique em **…** → **MCP Servers** → **Manage MCP Serve
 {
   "mcpServers": {
     "lpc": {
-      "command": "python",
-      "args": ["C:\\lpc-mcp\\server.py"],
-      "env": { "LPC_OUTPUT_DIR": "C:\\lpc-mcp\\output" }
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/kyuza1/lpc-character-mcp", "lpc-character-mcp"]
     }
   }
 }
 ```
 Salve e clique em **Refresh** na tela de MCP Servers. Na CLI do Antigravity, use `/mcp`
-para ver e recarregar os servidores. Se o `python` não for encontrado, use o caminho
-completo (ex.: `C:\\Users\\voce\\AppData\\Local\\Programs\\Python\\Python313\\python.exe`).
+para ver e recarregar os servidores.
 
 ### Outros clientes MCP
-Qualquer cliente que rode servidores **stdio** funciona: comando `python`, argumento
-o caminho do `server.py`.
+Qualquer cliente que rode servidores **stdio** funciona com o mesmo comando `uvx` acima.
+
+### Sem uv (pip)
+```
+pip install git+https://github.com/kyuza1/lpc-character-mcp
+lpc-character-mcp --setup
+```
+E registre o comando `lpc-character-mcp` (sem argumentos) no seu assistente.
+
+### Dicas
+- **Atualizar para a versão mais nova:** `uvx --refresh --from git+https://github.com/kyuza1/lpc-character-mcp lpc-character-mcp --version`
+- **`uvx` não encontrado pelo app:** use o caminho completo (`where uvx` no Windows,
+  `which uvx` no macOS/Linux).
+- **Instalação antiga** (`python C:\lpc-mcp\server.py`): continua funcionando.
 
 ## Exemplos de pedidos
 - "Gera um ferreiro moreno com avental de couro e martelo e exporta para Godot"
@@ -192,9 +202,13 @@ outras) — se publicar um jogo, inclua esses créditos.
 
 ## Desenvolvimento
 ```
-pip install pytest
+git clone https://github.com/kyuza1/lpc-character-mcp.git
+cd lpc-character-mcp
+pip install -e ".[dev]"
 python -m pytest -q
 ```
+Rodando de um clone, as definições, o cache e os personagens ficam dentro da pasta do
+clone (`lpc/`, `cache/`, `output/`).
 Os testes rodam no GitHub Actions em Linux, Windows e macOS a cada push e toda segunda
 (para pegar mudanças no repositório oficial do LPC).
 

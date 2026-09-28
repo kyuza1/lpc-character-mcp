@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from PIL import Image
 
-import server as s
+from lpc_character_mcp import server as s
 
 ELFA = [
     {"id": "body/body", "color": "light"},

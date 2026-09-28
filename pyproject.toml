@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lpc-character-mcp"
+dynamic = ["version"]
+description = "MCP server that generates LPC pixel-art characters and exports them to Godot, Unity and the web"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "LUCAS ARAUJO" }]
+keywords = ["mcp", "lpc", "pixel-art", "sprites", "spritesheet", "godot", "unity", "phaser", "gamedev"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Games/Entertainment",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = ["mcp>=2", "pillow", "numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+lpc-character-mcp = "lpc_character_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/kyuza1/lpc-character-mcp"
+Issues = "https://github.com/kyuza1/lpc-character-mcp/issues"
+
+[tool.hatch.version]
+path = "lpc_character_mcp/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["lpc_character_mcp", "tests", "server.py", "README.md", "LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["lpc_character_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

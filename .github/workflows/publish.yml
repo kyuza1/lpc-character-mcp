@@ -1,0 +1,21 @@
+name: publish
+
+# Publica no PyPI quando uma release é criada no GitHub.
+# Configuração única no PyPI (trusted publishing, sem token):
+#   pypi.org > Your projects > Publishing > Add a new pending publisher
+#   owner: kyuza1 · repository: lpc-character-mcp · workflow: publish.yml · environment: pypi
+on:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1

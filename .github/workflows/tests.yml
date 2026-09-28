@@ -18,5 +18,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt pytest
+      - run: pip install -e ".[dev]"
       - run: python -m pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      # instala o pacote como um usuário faria, fora do repositório
+      - name: smoke test
+        run: |
+          cd /tmp
+          export LPC_DATA_DIR=/tmp/lpc-data LPC_OUTPUT_DIR=/tmp/lpc-out
+          uvx --from "$GITHUB_WORKSPACE"/dist/*.whl lpc-character-mcp --version
+          uvx --from "$GITHUB_WORKSPACE"/dist/*.whl lpc-character-mcp --setup
