@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from mcp.server.mcpserver import Image as MCPImage
 from mcp.server.mcpserver import MCPServer
 import numpy as np
 from PIL import Image
@@ -707,6 +708,41 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
                     "url": build_url(items, body), **({"error": r["error"]} if "error" in r else {})})
     return {"count": len(out), "characters": out}
 
+
+# ---------- prévia no chat ----------
+@mcp.tool()
+def preview_character(items: list[dict], body_type: str = "male", animation: str = "walk"):
+    """Mostra uma prévia do personagem (4 direções, ampliada) direto no chat, sem salvar
+    o arquivo final. Use para conferir o visual antes de generate_character.
+    animation: walk, idle, slash... ou uma especial (tool_hammer, slash_128, walk_128...)."""
+    global OUT
+    special = animation in _custom_animations()
+    base = _custom_base(animation) if special else animation
+    if base not in ANIMATIONS:
+        return f"animação desconhecida: {animation}. Use uma de {ANIMATIONS} ou uma especial."
+    saved, OUT = OUT, CACHE / "_preview"
+    try:
+        r = generate_character(items, body_type, [base], "preview.png", "compact")
+    finally:
+        OUT = saved
+    if "error" in r:
+        return r["error"]
+    info = r["animations"].get(animation)
+    if not info:
+        return f"a animação '{animation}' não existe para esses itens: {list(r['animations'])}"
+    sheet = Image.open(r["file"])
+    f, y0 = info["frame"], info["y"]
+    col = 1 if animation == "walk" else (2 if special else 0)  # quadro representativo
+    strip = Image.new("RGBA", (f * 4, f), (236, 236, 236, 255))
+    for d in range(4):  # cima, esquerda, baixo, direita
+        strip.alpha_composite(sheet.crop((col * f, y0 + d * f, (col + 1) * f, y0 + (d + 1) * f)), (d * f, 0))
+    scale = 3 if f == 64 else 2
+    buf = io.BytesIO()
+    strip.resize((strip.width * scale, strip.height * scale), Image.NEAREST).save(buf, "PNG")
+    note = {"animation": animation, "body_type": body_type}
+    if r.get("missing"):
+        note["missing"] = r["missing"]
+    return [MCPImage(data=buf.getvalue(), format="png"), json.dumps(note, ensure_ascii=False)]
 
 if __name__ == "__main__":
     mcp.run()

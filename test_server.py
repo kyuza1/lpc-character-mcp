@@ -230,3 +230,20 @@ def test_gera_lote(tmp_path):
         assert "error" not in c
         assert (tmp_path / f"vila_{n:02d}.png").exists()
         assert (tmp_path / f"vila_{n:02d}_credits.txt").exists()
+
+
+def test_previa_devolve_imagem_pelo_mcp():
+    res = asyncio.run(s.mcp.call_tool("preview_character", {"items": FERREIRO}))
+    tipos = [c.type for c in res.content]
+    assert "image" in tipos and "text" in tipos
+
+
+def test_previa_de_animacao_especial():
+    img_data = s.preview_character(FERREIRO, animation="tool_hammer")[0].data
+    import io
+    img = Image.open(io.BytesIO(img_data))
+    assert img.size == (4 * 128 * 2, 128 * 2)
+
+
+def test_previa_animacao_invalida():
+    assert "desconhecida" in s.preview_character(FERREIRO, animation="xyz")
