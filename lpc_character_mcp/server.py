@@ -238,7 +238,9 @@ def generate_character(items: list[dict], body_type: str = "male",
     result["credits"] = _write_credits(_credits(items), out / path.stem)
     if export:
         by_anim = _missing_by_animation(comp["missing"], index)
-        result["exports"] = {e: EXPORTERS[e](path, final, index, items, body_type, by_anim) for e in export}
+        extras = _derived_animations(items, index)
+        result["exports"] = {e: EXPORTERS[e](path, final, index, items, body_type, by_anim, extras)
+                             for e in export}
     if comp["missing"]:
         # item sem arte para esse corpo/animação: não aparece nessas linhas
         result["missing"] = comp["missing"]
@@ -396,18 +398,20 @@ PREVIEW_BG = (236, 236, 236, 255)
 def _preview_frames(items, body_type, animation):
     """Quadros da prévia: para cada instante, as 4 direções lado a lado. Devolve (quadros, fps, nota)."""
     special = animation in _custom_animations()
-    base = _custom_base(animation) if special else animation
+    derived = exporters.DERIVED.get(animation)
+    base = _custom_base(animation) if special else derived[0] if derived else animation
     if base not in ANIMATIONS:
         raise ValueError(t("unknown_animation", anim=animation, valid=ANIMATIONS))
     comp = _compose(items, body_type, [base])
     if "error" in comp:
         raise ValueError(comp["error"])
     rows = {a: (img, f) for a, img, f in comp["rows"]}
-    if animation not in rows:
+    row = base if derived else animation
+    if row not in rows:
         raise ValueError(t("animation_not_available", anim=animation, available=list(rows)))
-    img, f = rows[animation]
-    info = _row_info(animation, img, f, 0)
-    clips = exporters.frames_of(img, {animation: info})
+    img, f = rows[row]
+    info = _row_info(row, img, f, 0)
+    clips = [c for c in exporters.frames_of(img, {row: info}, (animation,)) if c[1] == animation]
     length = max(len(cells) for *_, cells in clips)
     scale = 3 if f == 64 else 2
     frames = []
@@ -432,7 +436,7 @@ def preview_character(items: list[dict], body_type: str = "male", animation: str
                       animated: bool = True):
     """Shows the character in the chat without saving files: the 4 directions side by side.
     animated=True (default) returns an animated GIF of the animation; False, a still image.
-    animation: walk, idle, slash, run... or an oversized one (tool_hammer, slash_128, walk_128...).
+    animation: walk, idle, slash, run..., 1h_slash, watering, or an oversized one (tool_hammer, slash_128...).
     Use it to check the look before generate_character."""
     try:
         frames, fps, note = _preview_frames(items, body_type, animation)
@@ -505,7 +509,18 @@ def update_definitions(clear_image_cache: bool = False) -> dict:
 
 
 # ---------- exportação ----------
-def _export_site(path, img, index, items, body_type, missing=None):
+def _derived_animations(items, index):
+    """Animações extras do gerador oficial: golpe de uma mão (sempre que há backslash) e
+    regar (só com o regador)."""
+    extras = []
+    if "backslash" in index:
+        extras.append("1h_slash")
+    if "thrust" in index and any(it["id"] == "tools/tool_watering_can" for it in items):
+        extras.append("watering")
+    return extras
+
+
+def _export_site(path, img, index, items, body_type, missing=None, extras=()):
     """JSON aceito pelo botão "Import from Clipboard" do site do gerador."""
     out = Path(path).with_name(f"{Path(path).stem}_site.json")
     out.write_text(json.dumps({"version": 1, "url": build_url(items, body_type)}, indent=2),
@@ -515,9 +530,9 @@ def _export_site(path, img, index, items, body_type, missing=None):
 
 
 EXPORTERS = {
-    "godot": lambda path, img, index, items, body, missing: exporters.godot(path, img, index),
-    "unity": lambda path, img, index, items, body, missing: exporters.unity(path, img, index),
-    "web": lambda path, img, index, items, body, missing: exporters.web(path, img, index, missing),
+    "godot": lambda path, img, index, items, body, missing, extras: exporters.godot(path, img, index, extras=extras),
+    "unity": lambda path, img, index, items, body, missing, extras: exporters.unity(path, img, index, extras=extras),
+    "web": lambda path, img, index, items, body, missing, extras: exporters.web(path, img, index, missing, extras),
     "site": _export_site,
 }
 

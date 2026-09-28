@@ -342,7 +342,7 @@ def test_exporta_godot(tmp_path):
     assert txt.startswith('[gd_resource type="SpriteFrames"')
     assert 'path="res://characters/g.png"' in txt
     assert '&"walk_down"' in txt and '&"tool_hammer_left"' in txt
-    assert "region = Rect2(0, 512, 64, 64)" in txt  # 1º quadro do walk_up
+    assert "region = Rect2(64, 512, 64, 64)" in txt  # walk_up começa no quadro 1 (o 0 é a pose parada)
     assert r["exports"]["godot"]["animations"] == 12
 
 
@@ -352,7 +352,7 @@ def test_exporta_unity(tmp_path):
     assert "spriteMode: 2" in meta and "filterMode: 0" in meta and "walk_down_0:" in meta
     anim = (tmp_path / "u_unity_anims" / "walk_down.anim").read_text(encoding="utf8")
     assert "m_Sprite" in anim and "m_LoopTime: 1" in anim
-    assert anim.count("time: ") == 9
+    assert anim.count("time: ") == 8  # walk: quadros 1 a 8, como no gerador oficial
     # os ids do clipe apontam para sprites do .meta
     import re
     ids = set(re.findall(r"fileID: (\d{6,})", anim))
@@ -364,8 +364,8 @@ def test_exporta_web(tmp_path):
     s.generate_character(FERREIRO, animations=["walk"], filename="w.png", export=["web"])
     atlas = json.loads((tmp_path / "w.json").read_text(encoding="utf8"))
     assert atlas["meta"]["image"] == "w.png"
-    assert len(atlas["animations"]["walk_down"]) == 9
-    assert atlas["frames"]["walk_down_0"]["frame"] == {"x": 0, "y": 640, "w": 64, "h": 64}
+    assert len(atlas["animations"]["walk_down"]) == 8
+    assert atlas["frames"]["walk_down_0"]["frame"] == {"x": 64, "y": 640, "w": 64, "h": 64}
     html = (tmp_path / "w_demo.html").read_text(encoding="utf8")
     assert '"w.png"' in html and "walk_down" in html
 
@@ -685,3 +685,30 @@ def test_versoes_iguais_em_todos_os_arquivos():
     assert f"mcp-name: {server['name']}" in (root / "README.md").read_text(encoding="utf8")
     # o manifesto do MCPB lista as mesmas ferramentas do servidor
     assert {t["name"] for t in manifest["tools"]} == {t.name for t in asyncio.run(s.mcp.list_tools())}
+
+
+# ---------- ordem dos quadros e animações extras ----------
+def test_sequencias_iguais_ao_gerador_oficial(tmp_path):
+    import json
+    s.generate_character(FERREIRO, animations=["idle", "sit", "slash"], filename="cy.png", export=["web"])
+    a = json.loads((tmp_path / "cy.json").read_text(encoding="utf8"))
+    frame_x = lambda clip: [a["frames"][k]["frame"]["x"] // a["frames"][k]["frame"]["w"] for k in a["animations"][clip]]
+    assert frame_x("idle_down") == [0, 0, 1]
+    assert frame_x("sit_left") == [0] * 5 + [1] * 5 + [2] * 5
+    assert frame_x("slash_up") == [0, 1, 2, 3, 4, 5]
+
+
+def test_golpe_de_uma_mao_e_regar(tmp_path):
+    import json
+    base = [{"id": "body/body"}, {"id": "head/heads/human/heads_human_male"}]
+    s.generate_character(base, animations=["backslash", "thrust"], filename="ex.png", export=["web", "godot"])
+    a = json.loads((tmp_path / "ex.json").read_text(encoding="utf8"))
+    assert "1h_slash_down" in a["animations"] and len(a["animations"]["1h_slash_down"]) == 7
+    assert len(a["animations"]["backslash_down"]) == 12  # pula o quadro 6
+    assert "watering_down" not in a["animations"]  # só com o regador
+    assert '&"1h_slash_left"' in (tmp_path / "ex.tres").read_text(encoding="utf8")
+    s.generate_character(base + [{"id": "tools/tool_watering_can"}], animations=["thrust"],
+                         filename="rg.png", export=["web"])
+    a = json.loads((tmp_path / "rg.json").read_text(encoding="utf8"))
+    xs = [a["frames"][k]["frame"]["x"] // 64 for k in a["animations"]["watering_down"]]
+    assert xs == [0, 1, 4, 4, 4, 4, 5]

@@ -14,20 +14,57 @@ from pathlib import Path
 # animações que repetem em loop (as outras tocam uma vez)
 LOOPING = {"walk", "run", "idle", "combat_idle", "climb", "walk_128", "spellcast"}
 # quadros por segundo de cada animação (padrão: 10)
-FPS = {"idle": 3, "combat_idle": 3, "walk": 10, "run": 12, "sit": 3, "emote": 6, "hurt": 8,
-       "climb": 8, "jump": 10, "shoot": 14, "thrust": 12, "spellcast": 10}
+FPS = {"idle": 3, "combat_idle": 3, "walk": 10, "run": 12, "sit": 8, "emote": 8, "hurt": 8,
+       "climb": 8, "jump": 10, "shoot": 14, "thrust": 12, "spellcast": 10, "watering": 8,
+       "1h_slash": 12}
+# Ordem em que os quadros tocam, igual ao gerador oficial (ANIMATION_CONFIGS): o walk pula
+# o quadro 0 (pose parada), idle/sit/emote seguram quadros, o backslash pula o quadro 6...
+CYCLES = {
+    "spellcast": [0, 1, 2, 3, 4, 5, 6],
+    "thrust": [0, 1, 2, 3, 4, 5, 6, 7],
+    "walk": [1, 2, 3, 4, 5, 6, 7, 8],
+    "slash": [0, 1, 2, 3, 4, 5],
+    "shoot": list(range(13)),
+    "hurt": [0, 1, 2, 3, 4, 5],
+    "climb": [0, 1, 2, 3, 4, 5],
+    "idle": [0, 0, 1],
+    "jump": [0, 1, 2, 3, 4, 1],
+    "sit": [0] * 5 + [1] * 5 + [2] * 5,
+    "emote": [0] * 5 + [1] * 5 + [2] * 5,
+    "run": [0, 1, 2, 3, 4, 5, 6, 7],
+    "combat_idle": [0, 0, 1],
+    "backslash": [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12],
+    "halfslash": [0, 1, 2, 3, 4, 5],
+}
+# Animações que o gerador oficial monta a partir de outra linha da folha
+DERIVED = {
+    "1h_slash": ("backslash", [0, 1, 2, 3, 4, 5, 6]),  # golpe de uma mão
+    "watering": ("thrust", [0, 1, 4, 4, 4, 4, 5]),     # regar (com o regador)
+}
 
 
-def frames_of(img, index):
-    """[(nome_clipe, animação, direção, [(x, y, tamanho)...])] sem quadros vazios no fim."""
+def frames_of(img, index, extras=()):
+    """[(nome_clipe, animação, direção, [(x, y, tamanho)...])] na ordem em que tocam.
+    `extras`: animações derivadas (DERIVED) a incluir, ex.: ("1h_slash",)."""
     clips = []
-    for anim, info in index.items():
+    sources = [(anim, anim, CYCLES.get(anim)) for anim in index]
+    sources += [(name, src, cycle) for name, (src, cycle) in DERIVED.items()
+                if name in extras and src in index]
+    for anim, src, cycle in sources:
+        info = index[src]
         f = info["frame"]
         for r, direction in enumerate(info["directions"]):
             y = info["y"] + r * f
-            cells = [(c * f, y, f) for c in range(info["columns"])]
-            while cells and not img.crop((cells[-1][0], y, cells[-1][0] + f, y + f)).getbbox():
-                cells.pop()
+
+            def blank(c):
+                return not img.crop((c * f, y, c * f + f, y + f)).getbbox()
+            if cycle:
+                cells = [(c * f, y, f) for c in cycle if c < info["columns"] and not blank(c)]
+            else:  # animações especiais: todos os quadros, sem os vazios do fim
+                cols = list(range(info["columns"]))
+                while cols and blank(cols[-1]):
+                    cols.pop()
+                cells = [(c * f, y, f) for c in cols]
             if cells:
                 name = anim if len(info["directions"]) == 1 else f"{anim}_{direction}"
                 clips.append((name, anim, direction, cells))
@@ -50,13 +87,13 @@ def godot_res_dir(folder):
     return None
 
 
-def godot(path, img, index, res_dir=None):
+def godot(path, img, index, res_dir=None, extras=()):
     """SpriteFrames (.tres) para AnimatedSprite2D. Se o PNG já está dentro de um projeto
     Godot, usa o caminho res:// dele; senão, espera os arquivos em res://characters/."""
     path = Path(path)
     in_project = godot_res_dir(path.parent)
     res_dir = (res_dir or in_project or "res://characters/").rstrip("/") + "/"
-    clips = frames_of(img, index)
+    clips = frames_of(img, index, extras)
     subs, anims, n = [], [], 0
     for name, anim, _, cells in clips:
         frames = []
@@ -89,12 +126,12 @@ def _internal_id(seed):
     return int(hashlib.md5(seed.encode()).hexdigest()[:15], 16)  # int64 positivo
 
 
-def unity(path, img, index, pixels_per_unit=64):
+def unity(path, img, index, pixels_per_unit=64, extras=()):
     """PNG .meta com os sprites já fatiados (Sprite Mode: Multiple, Point filter, sem compressão)
     e um clipe .anim por animação/direção. Copie tudo para Assets/ no Unity."""
     path = Path(path)
     tex_guid = _guid(f"lpc-texture:{path.name}")
-    clips = frames_of(img, index)
+    clips = frames_of(img, index, extras)
     height = img.height
     sprites, table = [], []
     for name, anim, _, cells in clips:
@@ -404,11 +441,11 @@ AnimatorStateMachine:
 
 
 # ---------- Web (Phaser 3 / PixiJS) ----------
-def web(path, img, index, missing=None):
+def web(path, img, index, missing=None, extras=()):
     """Atlas JSON (formato TexturePacker "hash", lido por Phaser e PixiJS) com as animações,
     mais uma página HTML de demonstração que toca o personagem (setas/WASD para andar)."""
     path = Path(path)
-    clips = frames_of(img, index)
+    clips = frames_of(img, index, extras)
     frames, animations = {}, {}
     for name, anim, _, cells in clips:
         keys = []
