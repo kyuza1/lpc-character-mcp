@@ -85,7 +85,8 @@ on Windows, `%USERPROFILE%\.gemini\config\mcp_config.json`):
 Save and click **Refresh** on the MCP Servers page. In the Antigravity CLI, use `/mcp`.
 
 ### Directories
-Also listed in the [official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.kyuza1/lpc-character-mcp)
+Listed on [Smithery](https://smithery.ai/servers/digitalinovadora/lpc-character-mcp),
+[Glama](https://glama.ai/mcp/servers/kyuza1/lpc-character-mcp) and the [official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.kyuza1/lpc-character-mcp)
 as `io.github.kyuza1/lpc-character-mcp`, which clients and directories that read the
 registry pick up automatically.
 

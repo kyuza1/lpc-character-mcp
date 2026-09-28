@@ -92,7 +92,8 @@ Salve e clique em **Refresh** na tela de MCP Servers. Na CLI do Antigravity, use
 para ver e recarregar os servidores.
 
 ### Catálogos
-Também está no [registro oficial de MCP](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.kyuza1/lpc-character-mcp)
+Está no [Smithery](https://smithery.ai/servers/digitalinovadora/lpc-character-mcp),
+no [Glama](https://glama.ai/mcp/servers/kyuza1/lpc-character-mcp) e no [registro oficial de MCP](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.kyuza1/lpc-character-mcp)
 como `io.github.kyuza1/lpc-character-mcp`, de onde clientes e catálogos que leem o registro
 puxam automaticamente.
 
