@@ -621,7 +621,8 @@ def get_item(item_id: str) -> dict:
 def generate_character(items: list[dict], body_type: str = "male",
                        animations: list[str] | None = None, filename: str = "character.png",
                        layout: str = "standard", split: bool | str | list[str] = False,
-                       export: list[str] | None = None, prefer_complete: bool = False) -> dict:
+                       export: list[str] | None = None, prefer_complete: bool = False,
+                       output_dir: str | None = None) -> dict:
     """Gera a spritesheet do personagem e salva em PNG.
 
     Todo resultado traz `animation_check`: se todos os itens têm todas as animações e,
@@ -629,6 +630,9 @@ def generate_character(items: list[dict], body_type: str = "male",
     prefer_complete=True troca sozinho itens incompletos pelo parecido mais próximo que
     tem todas as animações (mantendo a cor quando dá) e lista as trocas em `replaced`.
     Só use com o aval do usuário: a troca muda o visual (ex.: avental vira macacão).
+    output_dir: pasta onde salvar (ex.: a pasta de sprites do projeto do jogo). Se ficar
+           dentro de um projeto Godot, o .tres já sai com o caminho res:// certo; num projeto
+           Unity, salve dentro de Assets/. Padrão: LPC_OUTPUT_DIR ou ~/lpc-characters.
 
     items: lista de {"id": "<item id>", "color": "<cor>" | ["<cor 1>", "<cor 2>"], "variant": "<variante>"}.
            Inclua um corpo (body/body) e uma cabeça (ex.: head/heads/human/heads_human_male).
@@ -684,21 +688,22 @@ def generate_character(items: list[dict], body_type: str = "male",
     items, rows = comp["items"], comp["rows"]
     final, index = _assemble(rows, layout)
 
-    OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / filename
+    out = Path(output_dir).expanduser() if output_dir else OUT
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / filename
     final.save(path)
     result = {"file": str(path), "size": list(final.size), "frame": 64, "layout": layout,
               "animations": index}
     used = set(_used_files)
 
     if "animation" in split_modes:
-        folder = OUT / f"{path.stem}_anims"
+        folder = out / f"{path.stem}_anims"
         folder.mkdir(exist_ok=True)
         for anim, s, _ in rows:
             s.save(folder / f"{anim}.png")
         result["split_folder"] = str(folder)
     if "frame" in split_modes:
-        folder = OUT / f"{path.stem}_frames"
+        folder = out / f"{path.stem}_frames"
         for anim, s, frame in rows:
             info = index[anim]
             for r, direction in enumerate(info["directions"]):
@@ -710,7 +715,7 @@ def generate_character(items: list[dict], body_type: str = "male",
                         cell.save(sub / f"{direction}_{c:02d}.png")
         result["frames_folder"] = str(folder)
     if "item" in split_modes:
-        folder = OUT / f"{path.stem}_items"
+        folder = out / f"{path.stem}_items"
         folder.mkdir(exist_ok=True)
         for it in items:
             one = _compose([it], body_type, animations, inherit_from=items)
@@ -721,7 +726,7 @@ def generate_character(items: list[dict], body_type: str = "male",
 
     _used_files.clear()
     _used_files.update(used)
-    result["credits"] = _write_credits(_credits(items), OUT / path.stem)
+    result["credits"] = _write_credits(_credits(items), out / path.stem)
     if export:
         by_anim = _missing_by_animation(comp["missing"], index)
         result["exports"] = {e: EXPORTERS[e](path, final, index, items, body_type, by_anim) for e in export}
@@ -1211,7 +1216,8 @@ def random_character(body_type: str = "male", seed: int | None = None,
 def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: int | None = None,
                    prefix: str = "npc", fixed_items: list[dict] | None = None,
                    animations: list[str] | None = None, layout: str = "standard",
-                   split: bool = False) -> dict:
+                   split: bool = False, export: list[str] | None = None,
+                   output_dir: str | None = None) -> dict:
     """Gera vários personagens aleatórios de uma vez (ex.: aldeões para um vilarejo).
     Salva <prefix>_01.png, <prefix>_02.png... e os créditos de cada um.
     body_types: corpos sorteados entre esses (padrão: male e female).
@@ -1222,7 +1228,8 @@ def generate_batch(count: int = 5, body_types: list[str] | None = None, seed: in
     for n in range(1, count + 1):
         body = rng.choice(bodies)
         items = random_items(body, rng, fixed_items)
-        r = generate_character(items, body, animations, f"{prefix}_{n:02d}.png", layout, split)
+        r = generate_character(items, body, animations, f"{prefix}_{n:02d}.png", layout, split,
+                               export, output_dir=output_dir)
         out.append({"file": r.get("file"), "body_type": body, "items": items,
                     "complete": r.get("animation_check", {}).get("complete"),
                     "url": build_url(items, body), **({"error": r["error"]} if "error" in r else {})})

@@ -511,3 +511,30 @@ def test_corpo_e_cabeca_nunca_sao_trocados():
     r = s.generate_character([{"id": "body/body"}, {"id": "head/heads/human/heads_human_male"}],
                              "muscular", ["walk"], "nt.png", prefer_complete=True)
     assert "replaced" not in r
+
+
+# ---------- salvar no projeto do jogo ----------
+def test_output_dir_salva_na_pasta_pedida(tmp_path):
+    destino = tmp_path / "meu_jogo" / "sprites"
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="npc.png", output_dir=str(destino))
+    assert (destino / "npc.png").exists() and (destino / "npc_credits.txt").exists()
+    assert r["file"] == str(destino / "npc.png")
+
+
+def test_godot_detecta_projeto_e_usa_res_path(tmp_path):
+    (tmp_path / "project.godot").write_text("config_version=5\n")
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="npc.png", export=["godot"],
+                             output_dir=str(tmp_path / "art" / "npcs"))
+    tres = (tmp_path / "art" / "npcs" / "npc.tres").read_text(encoding="utf8")
+    assert 'path="res://art/npcs/npc.png"' in tres
+    assert r["exports"]["godot"]["res_path"] == "res://art/npcs/npc.tres"
+
+
+def test_godot_fora_de_projeto_usa_padrao(tmp_path):
+    r = s.generate_character(FERREIRO, animations=["walk"], filename="npc.png", export=["godot"])
+    assert r["exports"]["godot"]["res_path"] == "res://characters/npc.tres"
+
+
+def test_lote_com_output_dir(tmp_path):
+    r = s.generate_batch(2, seed=1, animations=["walk"], layout="compact", output_dir=str(tmp_path / "vila"))
+    assert all((tmp_path / "vila" / f"npc_0{n}.png").exists() for n in (1, 2))

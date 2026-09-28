@@ -36,10 +36,23 @@ def _fps(anim):
 
 
 # ---------- Godot 4 ----------
-def godot(path, img, index, res_dir="res://characters/"):
-    """SpriteFrames (.tres) para AnimatedSprite2D. Coloque o .png e o .tres em `res_dir`."""
+def godot_res_dir(folder):
+    """Se `folder` está dentro de um projeto Godot (tem project.godot acima), devolve o
+    caminho res:// dela; senão, None."""
+    folder = Path(folder).resolve()
+    for parent in [folder, *folder.parents]:
+        if (parent / "project.godot").exists():
+            rel = folder.relative_to(parent).as_posix()
+            return "res://" + (rel + "/" if rel != "." else "")
+    return None
+
+
+def godot(path, img, index, res_dir=None):
+    """SpriteFrames (.tres) para AnimatedSprite2D. Se o PNG já está dentro de um projeto
+    Godot, usa o caminho res:// dele; senão, espera os arquivos em res://characters/."""
     path = Path(path)
-    res_dir = res_dir.rstrip("/") + "/"
+    in_project = godot_res_dir(path.parent)
+    res_dir = (res_dir or in_project or "res://characters/").rstrip("/") + "/"
     clips = frames_of(img, index)
     subs, anims, n = [], [], 0
     for name, anim, _, cells in clips:
@@ -58,10 +71,12 @@ def godot(path, img, index, res_dir="res://characters/"):
             + f'\n[resource]\nanimations = [{", ".join(anims)}]\n')
     out = path.with_suffix(".tres")
     out.write_text(text, encoding="utf8")
-    return {"file": str(out), "animations": len(clips),
-            "how_to_use": f"Copie {path.name} e {out.name} para {res_dir} no projeto Godot 4 e use "
-                          f"o .tres em Sprite Frames de um AnimatedSprite2D "
-                          f"(animações: walk_down, walk_up, idle_left...)."}
+    use = (f"Já está no projeto: use {res_dir}{out.name} em Sprite Frames de um AnimatedSprite2D"
+           if in_project else
+           f"Copie {path.name} e {out.name} para {res_dir} no projeto Godot 4 e use o .tres em "
+           f"Sprite Frames de um AnimatedSprite2D")
+    return {"file": str(out), "res_path": f"{res_dir}{out.name}", "animations": len(clips),
+            "how_to_use": use + " (animações: walk_down, walk_up, idle_left...)."}
 
 
 # ---------- Unity ----------
