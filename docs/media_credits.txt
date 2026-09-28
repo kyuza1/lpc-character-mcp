@@ -2,7 +2,7 @@ Art from the Universal LPC Spritesheet Character Generator.
 When you use these images, credit the authors below according to the licenses.
 
 Credits screen text (paste it in your game):
-Sprites by: ??, Benjamin K. Smith (BenCreating), Bluecarrot16, Carlo Enrico Victoria (Nemisys), Charles Sanchez (CharlesGabriel), Cobra Hubbard (BlueVortexGames), Daniel Eddeland (daneeklu), DarkwallLKE, Dr. Jamgo, Durrani, Eliza Wyatt (ElizaWy), ElizaWy, ElizaWy; walk and down by JaidynReiman, Evert, Fabzy, Inboxninja, JaidynReiman, Joe White, Johannes Sjölund (wulax), Lanea Zimmerman (Sharm), Luke Mehl, Mandi Paugh, Manuel Riecke (MrBeast), Marcel van de Steeg (MadMarcel), Matthew Krohn (Makrohn), Matthew Krohn (makrohn), Michael Whitlock (bigbeargames), MuffinElZangano, Napsio, Napsio (Vitruvian Studio), Nila122, Page, Pierre Vigier (pvigier), Radomir Dopieralski, Sander Frenken (castelonia), Skorpio, Stephen Challener (Redshrike), Thane Brimhall (pennomi), TheraHedwig, Tracy, Tuomo Untinen (reemax), William.Thompsonj, William.Thomsponj, Zi Ye, bluecarrot16, drjamgo@hotmail.com, gr3yh47, kcilds/Rocetti/Eredah, laetissima, thecilekli
+Sprites by: ??, Benjamin K. Smith (BenCreating), Bluecarrot16, Carlo Enrico Victoria (Nemisys), Charles Sanchez (CharlesGabriel), Daniel Eddeland (daneeklu), DarkwallLKE, Dr. Jamgo, Durrani, Eliza Wyatt (ElizaWy), ElizaWy, ElizaWy; walk and down by JaidynReiman, Evert, Fabzy, Inboxninja, JaidynReiman, Joe White, Johannes Sjölund (wulax), Lanea Zimmerman (Sharm), Luke Mehl, Mandi Paugh, Manuel Riecke (MrBeast), Marcel van de Steeg (MadMarcel), Matthew Krohn (Makrohn), Matthew Krohn (makrohn), Michael Whitlock (bigbeargames), MuffinElZangano, Napsio, Napsio (Vitruvian Studio), Nila122, Page, Pierre Vigier (pvigier), Radomir Dopieralski, Sander Frenken (castelonia), Skorpio, Stephen Challener (Redshrike), Thane Brimhall (pennomi), TheraHedwig, Tuomo Untinen (reemax), William.Thompsonj, William.Thomsponj, Zi Ye, bluecarrot16, drjamgo@hotmail.com, gr3yh47, kcilds/Rocetti/Eredah, laetissima, thecilekli
 Sprites from the Liberated Pixel Cup collection on OpenGameArt.org: http://opengameart.org/content/lpc-collection
 License(s): CC-BY, CC-BY-SA, CC0, GPL, OGA-BY
 Detailed credits: media_credits.txt
@@ -207,13 +207,6 @@ feet/shoes/revised
   https://opengameart.org/content/lpc-expanded-sit-run-jump-more
   https://opengameart.org/content/lpc-expanded-socks-shoes
 
-feet/shoes/revised/male
-  Notes: original overalls and shoes by ElizaWy, base animations adapted from v3 overalls by bluecarrot16, shoes by JaidynReiman
-  Authors: JaidynReiman, ElizaWy, Bluecarrot16, Stephen Challener (Redshrike), Johannes Sjölund (wulax)
-  Licenses: OGA-BY 3.0, GPL 3.0
-  https://github.com/ElizaWy/LPC/tree/main/Characters/Clothing
-  https://opengameart.org/content/lpc-expanded-socks-shoes
-
 feet/shoes/sara/male
   Notes: LPC Sara by Redshrike, contributed by William Thompsonj, Shoes Separated by Bluecarrot16, Male Version and Jump/Sit/Emote/Run/Revised Combat by JaidynReiman
   Authors: JaidynReiman, Bluecarrot16, Mandi Paugh, Stephen Challener (Redshrike), William.Thompsonj
@@ -313,12 +306,6 @@ hair/half_up
   Authors: ElizaWy
   Licenses: OGA-BY 3.0
   https://opengameart.org/content/lpc-hair
-
-hair/high_ponytail
-  Authors: JaidynReiman, ElizaWy, bluecarrot16
-  Licenses: OGA-BY 3.0
-  https://opengameart.org/content/lpc-hair
-  https://opengameart.org/content/lpc-expanded-hair
 
 hair/long
   Authors: JaidynReiman, Manuel Riecke (MrBeast)
@@ -421,12 +408,6 @@ hair/spiked_liberty
   https://opengameart.org/content/the-revolution-hair
   https://opengameart.org/content/lpc-hair
 
-hair/spiked_liberty2
-  Authors: Cobra Hubbard (BlueVortexGames), bluecarrot16
-  Licenses: CC-BY 3.0
-  https://opengameart.org/content/anime-lpc-hair
-  https://opengameart.org/content/lpc-hair
-
 hair/spiked_porcupine
   Authors: Fabzy, bluecarrot16
   Licenses: CC-BY-SA 3.0
@@ -450,13 +431,6 @@ hair/wavy
   Licenses: OGA-BY 3.0, CC-BY-SA 3.0, GPL 2.0, GPL 3.0
   https://opengameart.org/content/3-hairs-for-lpc
   https://opengameart.org/content/lpc-expanded-hair
-
-hat/cloth/bandana
-  Authors: Matthew Krohn (makrohn), JaidynReiman, Marcel van de Steeg (MadMarcel), JaidynReiman
-  Licenses: OGA-BY 3.0, CC-BY-SA 3.0
-  https://opengameart.org/content/lpc-female-orcogregoblintroll-base-walkcycle
-  https://github.com/makrohn/Universal-LPC-spritesheet/commit/f50007cb47c235d8896cafae7a613f0b6a9a09a8?short_path=02b86d4#diff-02b86d45789a3e3e8e79519c7d17d15c9e6ecc9b4ddecb1bcd8dfbbaef430b75
-  https://opengameart.org/content/lpc-expanded-hats-facial-helmets
 
 hat/cloth/leather_cap
   Notes: original by Johannes Sjölund (wulax), female by Matthew Krohn, mapped to all frames w/recolors by JaidynReiman
@@ -520,13 +494,6 @@ hat/helmet/nasal
   Authors: bluecarrot16
   Licenses: CC-BY 3.0, CC-BY 4.0, OGA-BY 3.0, GPL 2.0, GPL 3.0
   https://opengameart.org/content/lpc-helmets
-  https://opengameart.org/content/lpc-expanded-hats-facial-helmets
-
-hat/magic/celestial
-  Notes: Original by Tracy, Adapted to ULPC by Big Bear Games, reduced colors by Napsio
-  Authors: Napsio (Vitruvian Studio), Michael Whitlock (bigbeargames), Tracy
-  Licenses: CC-BY 3.0
-  https://opengameart.org/content/lpc-celestial-wizard-hats
   https://opengameart.org/content/lpc-expanded-hats-facial-helmets
 
 hat/magic/wizard

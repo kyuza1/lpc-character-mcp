@@ -3,7 +3,7 @@
     python tools/make_video.py            # videos + install gifs, English and Portuguese
     python tools/make_video.py --gif      # only the install gifs
 
-output/promo.mp4       1280x720 video: install -> ask -> result -> engines -> showcase
+output/promo.mp4       1280x720 video: ask -> result -> engines -> showcase -> install
 output/promo_pt.mp4    the same in Portuguese
 docs/install.gif       the install in a terminal (cmd); docs/install_pt.gif in Portuguese
 docs/media_credits.*   authors and licenses of every sprite shown in the media
@@ -57,8 +57,6 @@ def mono(size):
 
 LANG = "en"
 TX = {  # key: (English, Portuguese)
-    "tagline": ("Game-ready pixel-art characters, just by asking your AI",
-                "Personagens em pixel art prontos para o seu jogo, é só pedir para a IA"),
     "install": ("Install with one command", "Instale com um comando"),
     "install_sub": ("uv downloads Python and the package - then register it in your AI",
                     "O uv baixa o Python e o pacote - depois é só registrar na sua IA"),
@@ -173,14 +171,6 @@ BLACKSMITH = ms.themed_items(ms.THEMED[11][1])
 
 def load_assets():
     a = {}
-    rng = random.Random(5)
-    people = [(b, ms.themed_items(p)) for b, p in ms.THEMED[:6]]
-    n = 100
-    while len(people) < 10:
-        people.append(ms.random_hero(rng, n))
-        n += 1
-    a["walkers"] = [walk_cells(items, body) for body, items in people]
-    a["grass"] = ms.grass(W // 2 + 64, 40, seed=3)
     old = server.PREVIEW_BG
     frames, fps, _ = server._preview_frames(BLACKSMITH, "male", "tool_hammer")
     remember_credits(BLACKSMITH)
@@ -386,39 +376,9 @@ def draw_terminal(img, box, t, size=19):
 
 
 # ---------------------------------------------------------------- scenes
-def scene_title(a, t, dur):
-    img = canvas()
-    d = ImageDraw.Draw(img)
-    for i in range(H):  # soft vertical glow
-        k = max(0, 1 - abs(i - 300) / 420)
-        d.line((0, i, W, i), fill=(13 + int(18 * k), 15 + int(16 * k), 21 + int(26 * k)))
-    a1 = ease(t / 0.8)
-    text_c(d, (W // 2, 200 - int(20 * (1 - a1))), "LPC Character MCP", bold(78), TEXT)
-    a2 = ease((t - 0.5) / 0.8)
-    if a2 > 0:
-        text_c(d, (W // 2, 282), T("tagline"),
-               regular(30), tuple(int(c * a2 + b * (1 - a2)) for c, b in zip(DIM, BG)))
-    # grass strip with walkers
-    gy = 470
-    strip = Image.new("RGB", (W // 2, 120))
-    g = a["grass"]
-    off = int(t * 40) % 64
-    for x in range(-64, W // 2 + 64, g.width - 64):
-        strip.paste(g.crop((0, 0, g.width, 40)).resize((g.width, 120), Image.NEAREST), (x - off, 0))
-    big = px(strip, 2)
-    img.paste(big, (0, gy + 60))
-    walkers = a["walkers"]
-    step = W // len(walkers)
-    frame = int(t * 10)
-    for i, cells in enumerate(walkers):
-        c = px(cells[(frame + i) % 8], 2)
-        img.paste(c, (i * step + (step - 128) // 2, gy + 20), c)
-    return fade(img, t, dur, 0.01)
-
-
 def scene_install(a, t, dur):
     img = canvas()
-    caption(img, 1, T("install"), T("install_sub"), t)
+    caption(img, 4, T("install"), T("install_sub"), t)
     draw_terminal(img, (48, 122, W - 48, H - 36), t)
     return fade(img, t, dur)
 
@@ -450,19 +410,19 @@ def pill(d, x, y, label, done, t):
 
 def scene_chat(a, t, dur):
     img = canvas()
-    caption(img, 2, T("ask"), T("ask_sub"), t)
+    caption(img, 1, T("ask"), T("ask_sub"), t)
     PROMPT_TEXT = T("prompt")
     d = ImageDraw.Draw(img)
     box = (48, 122, W - 48, H - 30)
     rounded(d, box, 16, PANEL)
     f = regular(22)
-    typed_end = 0.4 + len(PROMPT_TEXT) / 45
+    typed_end = 0.15 + len(PROMPT_TEXT) / 45
     sent = t > typed_end + 0.3
     # input box
     ib = (box[0] + 20, box[3] - 74, box[2] - 20, box[3] - 18)
     rounded(d, ib, 14, PANEL2)
     if not sent:
-        n = int(max(0.0, t - 0.4) * 45)
+        n = int(max(0.0, t - 0.15) * 45)
         s = PROMPT_TEXT[:n]
         lines = wrap(s, regular(19), ib[2] - ib[0] - 40) if s else [T("placeholder")]
         lines = lines[-2:]
@@ -471,7 +431,7 @@ def scene_chat(a, t, dur):
     else:
         d.text((ib[0] + 18, ib[1] + 16), T("placeholder"), font=regular(19), fill=DIM)
     if not sent:
-        return fade(img, t, dur)
+        return fade(img, t, dur, inn=0)
     ts = t - typed_end - 0.3
     y = box[1] + 20
     # user bubble (right)
@@ -506,12 +466,12 @@ def scene_chat(a, t, dur):
     for i, (s, c) in enumerate(lines):
         if ts > 3.2 + i * 0.45:
             rich(d, (x + (0 if i == 0 else 4), y2 + 48 + i * 29), s, regular(21), c)
-    return fade(img, t, dur)
+    return fade(img, t, dur, inn=0)
 
 
 def scene_result(a, t, dur):
     img = canvas()
-    caption(img, 3, T("sheet"), T("sheet_sub"), t)
+    caption(img, 2, T("sheet"), T("sheet_sub"), t)
     d = ImageDraw.Draw(img)
     # sheet panning
     pw, ph = 560, H - 160
@@ -560,7 +520,7 @@ FILES = [".png", ".tres", ".png.meta", "_unity_anims/", ".controller", ".json", 
 
 def scene_engines(a, t, dur):
     img = canvas()
-    caption(img, 4, T("engines"), T("engines_sub"), t)
+    caption(img, 3, T("engines"), T("engines_sub"), t)
     d = ImageDraw.Draw(img)
     rounded(d, (48, 128, 470, H - 40), 14, PANEL)
     d.text((70, 144), "~/lpc-characters", font=mono(18), fill=GOLD)
@@ -612,12 +572,11 @@ def scene_end(a, t, dur):
 
 def scenes():
     return [
-    (scene_title, 3.8),
-    (scene_install, TERM_DUR),
     (scene_chat, 11.0),
     (scene_result, 10.0),
     (scene_engines, 7.0),
     (scene_showcase, 5.0),
+    (scene_install, TERM_DUR),
     (scene_end, 6.0),
     ]
 
